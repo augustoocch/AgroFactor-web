@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+/**
+ * Sistema de diseño "AgroRisk".
+ *
+ * Tono de marca: técnico y sobrio, con calidez de tierra y agua — institucional (piensa en un
+ * informe de riesgo serio, un boletín agrometeorológico) pero no frío ni genérico-SaaS.
+ *
+ * Paleta: azul noche desaturado (agua, seriedad institucional) como base, ámbar-terracota como
+ * acento (alerta, tierra pampeana) en relación split-complementaria. Neutros con temperatura
+ * cálida (un pelo de amarillo), nunca grises puros. Los tres colores de riesgo (bajo/medio/alto)
+ * son una escala tierra-a-alerta deliberada, no el rojo/ámbar/verde default de cualquier UI kit.
+ */
+:root {
+  color-scheme: light;
+
+  --color-ink-950: oklch(19% 0.02 250);
+  --color-ink-800: oklch(30% 0.03 250);
+  --color-ink-600: oklch(45% 0.03 250);
+  --color-ink-400: oklch(62% 0.02 250);
+
+  --color-paper-50: oklch(98% 0.006 90);
+  --color-paper-100: oklch(96% 0.008 85);
+  --color-paper-200: oklch(92% 0.01 80);
+  --color-paper-300: oklch(87% 0.012 75);
+
+  --color-brand-950: oklch(22% 0.045 230);
+  --color-brand-900: oklch(27% 0.055 228);
+  --color-brand-700: oklch(38% 0.07 225);
+  --color-brand-600: oklch(45% 0.08 222);
+  --color-brand-500: oklch(53% 0.09 220);
+  --color-brand-200: oklch(88% 0.03 220);
+  --color-brand-100: oklch(93% 0.02 220);
+
+  --color-clay-600: oklch(56% 0.14 48);
+  --color-clay-500: oklch(64% 0.15 50);
+  --color-clay-400: oklch(74% 0.13 55);
+  --color-clay-100: oklch(94% 0.03 60);
+
+  --color-risk-bajo: oklch(58% 0.1 148);
+  --color-risk-bajo-bg: oklch(94% 0.03 148);
+  --color-risk-medio: oklch(68% 0.13 70);
+  --color-risk-medio-bg: oklch(94% 0.04 75);
+  --color-risk-alto: oklch(53% 0.17 27);
+  --color-risk-alto-bg: oklch(93% 0.04 30);
+
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+
+  --text-xs: clamp(0.72rem, 0.69rem + 0.15vw, 0.78rem);
+  --text-sm: clamp(0.84rem, 0.8rem + 0.2vw, 0.9rem);
+  --text-base: clamp(0.95rem, 0.9rem + 0.25vw, 1.05rem);
+  --text-lg: clamp(1.1rem, 1.02rem + 0.4vw, 1.3rem);
+  --text-xl: clamp(1.32rem, 1.18rem + 0.7vw, 1.7rem);
+  --text-2xl: clamp(1.65rem, 1.4rem + 1.25vw, 2.35rem);
+  --text-3xl: clamp(2.1rem, 1.65rem + 2.25vw, 3.25rem);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-swift: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+@theme inline {
+  --color-ink-950: var(--color-ink-950);
+  --color-ink-800: var(--color-ink-800);
+  --color-ink-600: var(--color-ink-600);
+  --color-ink-400: var(--color-ink-400);
+
+  --color-paper-50: var(--color-paper-50);
+  --color-paper-100: var(--color-paper-100);
+  --color-paper-200: var(--color-paper-200);
+  --color-paper-300: var(--color-paper-300);
+
+  --color-brand-950: var(--color-brand-950);
+  --color-brand-900: var(--color-brand-900);
+  --color-brand-700: var(--color-brand-700);
+  --color-brand-600: var(--color-brand-600);
+  --color-brand-500: var(--color-brand-500);
+  --color-brand-200: var(--color-brand-200);
+  --color-brand-100: var(--color-brand-100);
+
+  --color-clay-600: var(--color-clay-600);
+  --color-clay-500: var(--color-clay-500);
+  --color-clay-400: var(--color-clay-400);
+  --color-clay-100: var(--color-clay-100);
+
+  --color-risk-bajo: var(--color-risk-bajo);
+  --color-risk-bajo-bg: var(--color-risk-bajo-bg);
+  --color-risk-medio: var(--color-risk-medio);
+  --color-risk-medio-bg: var(--color-risk-medio-bg);
+  --color-risk-alto: var(--color-risk-alto);
+  --color-risk-alto-bg: var(--color-risk-alto-bg);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+body {
+  background: var(--color-paper-100);
+  color: var(--color-ink-950);
+  font-family: var(--font-sans);
+}
+
+::selection {
+  background: var(--color-clay-400);
+  color: var(--color-ink-950);
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+
+.font-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Escena de clima (ver ClimaEscena.tsx): efectos puramente decorativos con CSS, sin canvas ni
+ * libreria nueva. Se desactivan con prefers-reduced-motion para no forzar movimiento a quien lo
+ * pidio explicitamente en el SO.
+ */
+@keyframes lluvia-cae {
+  from {
+    transform: translateY(-10%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(220%);
+    opacity: 0.2;
+  }
+}
+
+@keyframes nube-deriva {
+  from {
+    transform: translateX(-8%);
+  }
+  to {
+    transform: translateX(8%);
+  }
+}
+
+@keyframes sol-pulso {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes rayo-flash {
+  0%, 92%, 100% {
+    opacity: 0;
+  }
+  94%, 97% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clima-escena * {
+    animation: none !important;
+  }
+}
