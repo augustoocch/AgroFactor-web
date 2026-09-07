@@ -43,6 +43,9 @@ export interface Establecimiento {
   tipoTenencia: TipoTenencia;
   perfilProductivo: PerfilProductivo;
   pesosPrioridad: PesosPrioridad;
+  /** Sin esto el informe de emergencia agropecuaria no identifica al productor ante SENASA. */
+  cuit: string | null;
+  renspa: string | null;
 }
 
 export interface Coordenada {
@@ -68,6 +71,40 @@ export interface Activo {
   tipo: TipoActivo;
   movilidad: Movilidad;
   valorEstimado: number;
+
+  // --- Ficha para peritaje. Todos opcionales: se completan con el tiempo. ---
+  /** Patente, RENSPA o numero de serie: individualiza el bien ante la aseguradora. */
+  identificacion: string | null;
+  marcaModelo: string | null;
+  anio: number | null;
+  estadoConservacion: string | null;
+  aseguradora: string | null;
+  polizaNumero: string | null;
+  polizaVence: string | null;
+  valorReposicionArs: number | null;
+  /** Permite responder si una lamina dada efectivamente alcanza al activo. */
+  alturaSobreSueloCm: number | null;
+  cantidad: number | null;
+  unidadCantidad: string | null;
+  /** Categoria animal, tipo de reserva o tipo de construccion, segun el tipo. */
+  categoria: string | null;
+  /** Material constructivo (INSTALACION) o tipo de superficie (CAMINO_ACCESO). */
+  material: string | null;
+  /** Construccion/corral donde esta guardado, o null si no esta contenido en otro activo. */
+  contenedorId: string | null;
+  observaciones: string | null;
+
+  // --- Declaracion de dano: se carga despues de un evento, no es parte de la ficha de arriba. ---
+  porcentajeDanoDeclarado: number | null;
+  danoDeclaradoEn: string | null;
+}
+
+export interface ActivoFoto {
+  id: string;
+  contentType: string;
+  tamanoBytes: number;
+  nombreOriginal: string | null;
+  subidaEn: string;
 }
 
 export interface EstadoFenologicoCatalogo {
@@ -92,6 +129,16 @@ export interface CultivoCatalogo {
   estados: EstadoFenologicoCatalogo[];
 }
 
+export interface ProvinciaCatalogo {
+  codigo: string;
+  nombre: string;
+}
+
+export interface PartidoCatalogo {
+  id: number;
+  nombre: string;
+}
+
 export interface CultivoImplantado {
   id: string;
   loteId: string;
@@ -102,6 +149,25 @@ export interface CultivoImplantado {
   estadoFenologico: string;
   fechaSiembra: string;
   margenAccion: MargenAccion;
+
+  // --- Ficha para peritaje. Todos opcionales: se completan a lo largo de la campana. ---
+  variedad: string | null;
+  densidadSiembra: number | null;
+  unidadDensidad: string | null;
+  /** Eje del calculo pericial: ubica el evento dentro del ciclo del cultivo. */
+  fechaEsperadaCosecha: string | null;
+  rendimientoEsperadoQqHa: number | null;
+  rendimientoHistoricoQqHa: number | null;
+  condicionSanitaria: string | null;
+  alturaCultivoCm: number | null;
+  costoImplantacionArs: number | null;
+  observaciones: string | null;
+  /** Derivado en el backend: null si todavia no se cargo la fecha esperada. */
+  diasHastaCosecha: number | null;
+
+  // --- Declaracion de dano: se carga despues de un evento, no es parte de la ficha de arriba. ---
+  porcentajeDanoDeclarado: number | null;
+  danoDeclaradoEn: string | null;
 }
 
 export interface EvaluacionRiesgo {
@@ -196,6 +262,10 @@ export interface ParametrosHidrologicos {
   direccionVientoDeg: number;
   infiltracionMediaMm: number;
   escurrimientoFueraDelLoteMm: number;
+  /** Agua que entro al lote desde los alrededores simulados. Cero si el entorno es una planicie. */
+  aporteExternoMm: number;
+  celdasLote: number;
+  celdasDominio: number;
   escorrentiaScsMm: number;
   laminaMaximaMm: number;
   superficieAnegadaPct: number;
@@ -209,6 +279,17 @@ export interface SimulacionInundacion {
   terreno: Terreno | null;
   parametros: ParametrosHidrologicos | null;
   pasos: PasoSimulacion[];
+  /** Que celdas del dominio simulado son el campo. El resto son alrededores de contexto. */
+  mascaraLote: boolean[][] | null;
+  /** Como le fue a cada lote EN ESTE escenario. `indice` es su posicion en el alcance enviado. */
+  ranking: ZonaSimulada[];
+}
+
+export interface ZonaSimulada {
+  indice: number;
+  laminaMaximaMm: number;
+  superficieAnegadaPct: number;
+  horaPico: number;
 }
 
 export type NivelAlerta = "INFORMATIVA" | "ATENCION" | "CRITICA";
@@ -236,9 +317,13 @@ export interface Justificacion {
 export interface AccionRecomendada {
   activoId: string;
   activoNombre: string;
+  activoTipo: TipoActivo;
+  movilidad: Movilidad;
   orden: number;
   scorePrioridad: number;
   justificacion: Justificacion;
+  /** Que hacer con este activo. No es "mover primero" para todos: un activo fijo no se traslada. */
+  recomendacion: string;
 }
 
 export interface PlanAccion {
@@ -246,6 +331,12 @@ export interface PlanAccion {
   establecimientoId: string;
   fecha: string;
   items: AccionRecomendada[];
+}
+
+/** Si corresponde generar el informe de emergencia agropecuaria, y por que (o por que no). */
+export interface InformeElegibilidad {
+  puedeGenerar: boolean;
+  motivo: string;
 }
 
 export interface Reporte {
@@ -308,5 +399,48 @@ export interface MeteorologiaDistribuida {
   } | null;
   capas: CapaMeteorologica[];
   ranking: ZonaAfectada[];
+  motivoNoDisponible: string | null;
+}
+
+// --- Pronostico dia a dia con isobandas de acumulacion ---------------------------------------
+
+/**
+ * Un dia de pronostico con su meteorologia Y el estado del suelo con el que se lo simulo.
+ * Las dos mitades van juntas a proposito: 30 mm sobre perfil seco y 30 mm sobre perfil cargado
+ * dan campos distintos, y sin la humedad antecedente al lado el numero de lluvia no explica nada.
+ */
+export interface DiaAnalizado {
+  fecha: string;
+  precipitacionMm: number;
+  probabilidadLluviaPct: number | null;
+  tempMaxC: number | null;
+  tempMinC: number | null;
+  humedadMediaPct: number | null;
+  vientoMaxKmh: number | null;
+  vientoRafagaKmh: number | null;
+  radiacionSolarMj: number | null;
+  horasSol: number | null;
+  condicion: CondicionClimatica;
+  impactos: string[];
+
+  lluviaPrevia5DiasMm: number;
+  condicionHumedadAntecedente: string;
+  curvaNumeroAjustada: number;
+
+  laminaMaximaMm: number;
+  superficieAnegadaPct: number;
+  horaPico: number;
+  aporteExternoMm: number;
+  infiltracionMediaMm: number;
+  escurrimientoFueraDelLoteMm: number;
+
+  bandas: BandaMeteorologica[];
+}
+
+export interface PronosticoDiaADia {
+  disponible: boolean;
+  bounds: TerrenoBounds | null;
+  celdaM: number | null;
+  dias: DiaAnalizado[];
   motivoNoDisponible: string | null;
 }

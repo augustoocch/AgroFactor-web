@@ -5,7 +5,7 @@ import { OrbitControls } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { ANCHO_ESCENA, construirTerreno, posicionX, posicionZ } from "@/components/terreno3d";
-import type { PasoSimulacion, Terreno } from "@/lib/types";
+import type { Coordenada, PasoSimulacion, Terreno, TerrenoBounds } from "@/lib/types";
 
 const MAX_GOTAS = 1800;
 const COLOR_FLUJO_LENTO = new THREE.Color("#9fd4ef");
@@ -279,6 +279,103 @@ function CamaraControlada({ vista }: { vista: VistaCamara }) {
   return null;
 }
 
+/**
+ * Contorno real del lote sobre el terreno simulado.
+ *
+ * El dominio que se simula es mas grande que el campo -hace falta, porque el agua que lo anega
+ * muchas veces baja de una ladera vecina- asi que sin esta linea el usuario estaria mirando un
+ * rectangulo generico creyendo que es su campo.
+ *
+ * Se dibuja proyectando el POLIGONO real del lote, no la mascara rasterizada de la simulacion:
+ * la mascara tiene la resolucion de la grilla de calculo (unas 10 celdas de lado sobre el lote),
+ * asi que un lote irregular salia como una escalera gruesa que no se parecia a su forma. La
+ * altura de cada vertice se interpola del terreno para que la linea siga el relieve en vez de
+ * flotar o hundirse.
+ */
+function ContornoLote({
+  anillos,
+  bounds,
+  grid,
+  elevacionMinM,
+  metrosPorUnidad,
+  exageracion,
+}: {
+  anillos: Coordenada[][];
+  bounds: TerrenoBounds;
+  grid: number[][];
+  elevacionMinM: number;
+  metrosPorUnidad: number;
+  exageracion: number;
+}) {
+  const geometria = useMemo(() => {
+    const filas = grid.length;
+    const columnas = grid[0]?.length ?? 0;
+    const dLat = bounds.latMax - bounds.latMin || 1;
+    const dLon = bounds.lonMax - bounds.lonMin || 1;
+
+    /** Altura del terreno en una posicion continua de la grilla, por interpolacion bilineal. */
+    const alturaEn = (fLat: number, fLon: number) => {
+      const f = Math.min(Math.max(fLat * (filas - 1), 0), filas - 1);
+      const c = Math.min(Math.max(fLon * (columnas - 1), 0), columnas - 1);
+      const f0 = Math.floor(f);
+      const c0 = Math.floor(c);
+      const f1 = Math.min(f0 + 1, filas - 1);
+      const c1 = Math.min(c0 + 1, columnas - 1);
+      const tf = f - f0;
+      const tc = c - c0;
+      const cota =
+        grid[f0][c0] * (1 - tf) * (1 - tc) +
+        grid[f0][c1] * (1 - tf) * tc +
+        grid[f1][c0] * tf * (1 - tc) +
+        grid[f1][c1] * tf * tc;
+      // Un pelo por encima de la superficie para que no quede enterrada en el mesh.
+      return ((cota - elevacionMinM) / metrosPorUnidad) * exageracion + 0.05;
+    };
+
+    const vertices: number[] = [];
+    const distancias: number[] = [];
+
+    for (const anillo of anillos) {
+      if (anillo.length < 2) continue;
+      const puntos = anillo.map((c) => {
+        const fLat = (c.lat - bounds.latMin) / dLat;
+        const fLon = (c.lon - bounds.lonMin) / dLon;
+        return [
+          (fLon - 0.5) * ANCHO_ESCENA,
+          alturaEn(fLat, fLon),
+          (fLat - 0.5) * ANCHO_ESCENA,
+        ] as [number, number, number];
+      });
+      // Se cierra el anillo si el ultimo vertice no repite el primero.
+      const cerrado = [...puntos, puntos[0]];
+      let recorrido = 0;
+      for (let i = 0; i < cerrado.length - 1; i++) {
+        const a = cerrado[i];
+        const b = cerrado[i + 1];
+        vertices.push(...a, ...b);
+        // lineDashedMaterial necesita la distancia acumulada, si no dibuja continuo. Se acumula
+        // a lo largo del anillo para que el patron de guiones no se reinicie en cada tramo.
+        const largo = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+        distancias.push(recorrido, recorrido + largo);
+        recorrido += largo;
+      }
+    }
+
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    g.setAttribute("lineDistance", new THREE.Float32BufferAttribute(distancias, 1));
+    return g;
+  }, [anillos, bounds, grid, elevacionMinM, metrosPorUnidad, exageracion]);
+
+  return (
+    <lineSegments geometry={geometria}>
+      {/* Con depthTest apagado la linea se veia atravesando el terreno, incluido el lado de
+          atras del lote: parecia ruido en vez de un contorno. */}
+      <lineDashedMaterial color="#fdf6e8" dashSize={0.16} gapSize={0.1} />
+    </lineSegments>
+  );
+}
+
 interface Props {
   terreno: Terreno;
   paso: PasoSimulacion;
@@ -287,9 +384,11 @@ interface Props {
   vista: VistaCamara;
   mostrarFlechas: boolean;
   mostrarLluvia: boolean;
-  /** Ancho real del lote en metros: fija la escala vertical verdadera del bloque. */
+  /** Ancho real del dominio simulado en metros: fija la escala vertical verdadera del bloque. */
   anchoLoteM: number;
   exageracion: number;
+  /** Anillos reales de los lotes. Sin esto el bloque entero se leeria como el campo. */
+  contornos?: Coordenada[][];
 }
 
 export function EscenaSimulacion({
@@ -302,6 +401,7 @@ export function EscenaSimulacion({
   mostrarLluvia,
   anchoLoteM,
   exageracion,
+  contornos,
 }: Props) {
   const metrosPorUnidad = Math.max(anchoLoteM, 1) / ANCHO_ESCENA;
   const { superficie, bloque, alturaDe } = useMemo(
@@ -332,6 +432,17 @@ export function EscenaSimulacion({
       </mesh>
 
       <Agua laminaGrid={paso.laminaGrid} alturaDe={alturaDe} escala={escala} />
+
+      {contornos && contornos.length > 0 && terreno.bounds && (
+        <ContornoLote
+          anillos={contornos}
+          bounds={terreno.bounds}
+          grid={terreno.grid}
+          elevacionMinM={terreno.elevacionMinM}
+          metrosPorUnidad={metrosPorUnidad}
+          exageracion={exageracion}
+        />
+      )}
 
       {mostrarFlechas && (
         <FlechasEscurrimiento

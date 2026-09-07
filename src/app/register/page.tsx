@@ -24,7 +24,7 @@ type FormValues = z.infer<typeof schema>;
 
 const ROLES: { value: FormValues["rol"]; label: string; ejemplo: string }[] = [
   { value: "PRODUCTOR", label: "Productor", ejemplo: "decide sobre su propio establecimiento" },
-  { value: "ASESOR", label: "Asesor tecnico", ejemplo: "atiende una cartera de establecimientos" },
+  { value: "ASESOR", label: "Asesor técnico", ejemplo: "atiende una cartera de establecimientos" },
   { value: "ADMINISTRADOR", label: "Administrador", ejemplo: "compara lotes antes de arrendar" },
 ];
 

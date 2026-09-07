@@ -8,7 +8,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { api, ApiError } from "@/lib/api";
 import { revealVariants } from "@/lib/motion";
-import { PartidoCombobox } from "@/components/PartidoCombobox";
+import { ProvinciaPartidoSelect } from "@/components/ProvinciaPartidoSelect";
 import type { Establecimiento } from "@/lib/types";
 
 const schema = z.object({
@@ -44,6 +44,7 @@ export default function NuevoEstablecimientoPage() {
   });
 
   const perfilElegido = watch("perfilProductivo");
+  const provinciaElegida = watch("provincia");
   const partidoElegido = watch("partido");
 
   const onSubmit = async (values: FormValues) => {
@@ -73,25 +74,12 @@ export default function NuevoEstablecimientoPage() {
           {errors.nombre && <p className="mt-1 text-xs text-risk-alto">{errors.nombre.message}</p>}
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-ink-800">Partido</label>
-            <div className="mt-1.5">
-              <PartidoCombobox
-                valorPartido={partidoElegido}
-                onCambiarPartido={(v) => setValue("partido", v, { shouldValidate: true })}
-                onSeleccionarProvincia={(v) => setValue("provincia", v, { shouldValidate: true })}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-ink-800">Provincia</label>
-            <input
-              className="mt-1.5 w-full rounded-lg border border-paper-300 bg-paper-50 px-3.5 py-2.5 text-sm outline-none focus:border-brand-500"
-              {...register("provincia")}
-            />
-          </div>
-        </div>
+        <ProvinciaPartidoSelect
+          provincia={provinciaElegida}
+          partido={partidoElegido}
+          onCambiarProvincia={(v) => setValue("provincia", v, { shouldValidate: true })}
+          onCambiarPartido={(v) => setValue("partido", v, { shouldValidate: true })}
+        />
 
         <div>
           <label className="block text-sm font-medium text-ink-800">Tenencia</label>

@@ -1,49 +1,30 @@
 "use client";
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { use, useEffect, useState } from "react";
-import { ActivoForm } from "@/components/ActivoForm";
+import { use, useState } from "react";
 import { ConfirmarBorrado } from "@/components/ConfirmarBorrado";
-import { CultivoForm } from "@/components/CultivoForm";
+import { ListaActivos } from "@/components/ListaActivos";
 import { ListaCultivos } from "@/components/ListaCultivos";
-import { PanelClima } from "@/components/PanelClima";
+import { PronosticoDiaADia } from "@/components/PronosticoDiaADia";
 import { RiesgoChip } from "@/components/RiesgoChip";
 import { InfoModal } from "@/components/InfoModal";
 import { api, clasificarError } from "@/lib/api";
+import { guardarGeometriaPendiente } from "@/lib/geometria-pendiente";
 import { useReubicarActivo } from "@/lib/hooks";
 import { useToast } from "@/lib/toast-context";
 import { revealVariants } from "@/lib/motion";
-import type { ParametrosSimulacion } from "@/components/SimulacionInundacion";
 import type {
   Activo,
-  Coordenada,
   CultivoImplantado,
   EvaluacionRiesgo,
   Lote,
-  SimulacionInundacion as Simulacion,
 } from "@/lib/types";
 
 const MapaLote = dynamic(() => import("@/components/MapaLote").then((m) => m.MapaLote), { ssr: false });
-const SimulacionInundacion = dynamic(
-  () => import("@/components/SimulacionInundacion").then((m) => m.SimulacionInundacion),
-  { ssr: false },
-);
-
-/** Valores de arranque: la lluvia es un evento fuerte pero plausible en la region; el resto se
- * pisa con el dato real medido apenas responde el backend (ver `onRestablecer`). */
-const PARAMETROS_INICIALES: ParametrosSimulacion = {
-  modo: "real",
-  escenarioLluviaMm: 100,
-  horas: 24,
-  vientoKmh: 15,
-  direccionVientoDeg: 180,
-  lluvia5DiasMm: 30,
-  humedadSueloM3m3: 0.3,
-};
 
 export default function LoteDetallePage({ params }: PageProps<"/establecimientos/[id]/lotes/[loteId]">) {
   const { id, loteId } = use(params);
@@ -51,22 +32,7 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
   const router = useRouter();
   const queryClient = useQueryClient();
   const { notificar } = useToast();
-  const [anilloNuevaZona, setAnilloNuevaZona] = useState<Coordenada[] | null>(null);
-  const [cultivoAEditar, setCultivoAEditar] = useState<CultivoImplantado | null>(null);
-  const [ubicacionNuevoActivo, setUbicacionNuevoActivo] = useState<Coordenada | null>(null);
-  const [activoAEditar, setActivoAEditar] = useState<Activo | null>(null);
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false);
-  const [parametrosSim, setParametrosSim] = useState<ParametrosSimulacion>(PARAMETROS_INICIALES);
-  const [parametrosAplicados, setParametrosAplicados] = useState<ParametrosSimulacion>(PARAMETROS_INICIALES);
-  const [simulacionActiva, setSimulacionActiva] = useState(false);
-
-  // La simulacion se recalcula sola al soltar un slider (el backend cachea la elevacion y el
-  // clima, asi que recalcular son milisegundos). El retardo evita disparar una corrida por cada
-  // pixel que se arrastra.
-  useEffect(() => {
-    const temporizador = setTimeout(() => setParametrosAplicados(parametrosSim), 350);
-    return () => clearTimeout(temporizador);
-  }, [parametrosSim]);
 
   const { data: lote } = useQuery({
     queryKey: ["lote", loteId],
@@ -84,37 +50,11 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
   });
 
   // Solo para poder mover un activo movible a otro lote desde la edicion.
-  const { data: lotesDelEstablecimiento = [] } = useQuery({
-    queryKey: ["lotes", id],
-    queryFn: () => api.get<Lote[]>(`/establecimientos/${id}/lotes`),
-  });
 
   const { data: evaluacion } = useQuery({
     queryKey: ["evaluacion-riesgo", loteId, "ultima"],
     queryFn: () => api.get<EvaluacionRiesgo>(`/lotes/${loteId}/evaluaciones-riesgo/ultima`),
     retry: false,
-  });
-
-  const { data: simulacion, isFetching: simulando } = useQuery({
-    queryKey: ["simulacion", loteId, parametrosAplicados],
-    queryFn: () => {
-      const p = parametrosAplicados;
-      const query = new URLSearchParams({
-        modo: p.modo,
-        escenarioLluviaMm: String(p.escenarioLluviaMm),
-        horas: String(p.horas),
-        vientoKmh: String(p.vientoKmh),
-        direccionVientoDeg: String(p.direccionVientoDeg),
-        lluvia5DiasMm: String(p.lluvia5DiasMm),
-        humedadSueloM3m3: String(p.humedadSueloM3m3),
-      });
-      return api.get<Simulacion>(`/lotes/${loteId}/topografia/simulacion?${query}`);
-    },
-    enabled: simulacionActiva,
-    staleTime: Infinity,
-    // Mantiene en pantalla la corrida anterior mientras llega la nueva: el terreno no se
-    // desmonta y la pagina no salta.
-    placeholderData: keepPreviousData,
   });
 
   const borrarLote = useMutation({
@@ -192,10 +132,18 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
         lote={lote}
         cultivos={cultivos}
         activos={activos}
-        onZonaDibujada={setAnilloNuevaZona}
-        onActivoUbicado={setUbicacionNuevoActivo}
-        onEditarCultivo={setCultivoAEditar}
-        onEditarActivo={setActivoAEditar}
+        onZonaDibujada={(anillo) => {
+          // La geometria viaja por sessionStorage y no por la URL: un anillo de veinte vertices
+          // deja una direccion ilegible y se rompe al recargar.
+          guardarGeometriaPendiente({ anillo });
+          router.push(`/establecimientos/${id}/lotes/${loteId}/cultivos/nuevo`);
+        }}
+        onActivoUbicado={(punto) => {
+          guardarGeometriaPendiente({ punto });
+          router.push(`/establecimientos/${id}/lotes/${loteId}/activos/nuevo`);
+        }}
+        onEditarCultivo={(cultivo) => router.push(`/establecimientos/${id}/lotes/${loteId}/cultivos/${cultivo.id}`)}
+        onEditarActivo={(activo) => router.push(`/establecimientos/${id}/lotes/${loteId}/activos/${activo.id}`)}
         onActivoMovido={(activo, coordenada) => reubicarActivo.mutate({ activo, coordenada })}
         autoDibujar={autoDibujar}
       />
@@ -203,81 +151,49 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
       <div className="grid gap-5 lg:grid-cols-2">
         <div className="space-y-3">
           <h2 className="font-display text-lg font-medium text-ink-950">Zonas de cultivo</h2>
-          <ListaCultivos loteId={loteId} cultivos={cultivos} onEditar={setCultivoAEditar} />
+          <ListaCultivos loteId={loteId} cultivos={cultivos} onEditar={(cultivo) => router.push(`/establecimientos/${id}/lotes/${loteId}/cultivos/${cultivo.id}`)} />
         </div>
         <div className="space-y-3">
           <h2 className="font-display text-lg font-medium text-ink-950">Activos en este lote</h2>
-          {activos.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-paper-300 p-4 text-center text-sm text-ink-600">
-              Todavia no hay activos. Usa &quot;+ Activo&quot; sobre el mapa.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {activos.map((activo) => (
-                <li key={activo.id} className="flex items-center justify-between gap-3 rounded-xl border border-paper-300 bg-paper-50 p-3.5">
-                  <div>
-                    <p className="text-sm font-medium text-ink-900">{activo.nombre}</p>
-                    <p className="text-xs text-ink-600">
-                      {activo.movilidad === "MOVIBLE" ? "movible" : "fijo"} · USD {activo.valorEstimado.toLocaleString("es-AR")}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setActivoAEditar(activo)}
-                    className="rounded-full border border-paper-300 px-3 py-1 text-xs text-ink-700 hover:border-brand-500 hover:text-brand-700"
-                  >
-                    Editar
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ListaActivos
+            loteId={loteId}
+            activos={activos}
+            onEditar={(activo) => router.push(`/establecimientos/${id}/lotes/${loteId}/activos/${activo.id}`)}
+          />
         </div>
       </div>
 
-      {/* min-w-0: sin esto la fila scrolleable de 14 dias estira el grid en vez de scrollear. */}
-      <div className="min-w-0">
-        <PanelClima loteReferenciaId={loteId} />
-      </div>
-
-      <div className="space-y-3 rounded-2xl border border-paper-300 bg-paper-50 p-5">
+      {/* Lo que el lote necesita del pronostico no es el pronostico -que es igual en todo el
+          predio, porque entra en una sola celda del modelo global- sino DONDE se junta el agua
+          cada dia. El desglose meteorologico del predio vive en la pestania Meteorologia. */}
+      <div className="min-w-0 space-y-3">
         <div>
-          <h2 className="font-display text-lg font-medium text-ink-950">Simulacion hidrologica de anegamiento</h2>
-          <p className="text-xs text-ink-600">
-            Balance de agua hora a hora sobre la elevacion real del lote: lluvia, infiltracion, evapotranspiracion y
-            escurrimiento. Arrastra para rotar el bloque de terreno, scroll para zoom.
+          <h2 className="font-display text-lg font-medium text-ink-950">Acumulacion esperada, dia por dia</h2>
+          <p className="max-w-2xl text-xs text-ink-600">
+            Para cada dia del pronostico, donde se juntaria el agua en este lote. Cada dia se corre sobre el estado de
+            suelo que dejan los anteriores: la misma lluvia no da lo mismo sobre un perfil seco que sobre uno cargado.
           </p>
         </div>
+        {lote && <PronosticoDiaADia loteId={loteId} lotes={[lote]} />}
+      </div>
 
-        {!simulacionActiva && (
-          <button
-            onClick={() => setSimulacionActiva(true)}
-            className="rounded-full border border-brand-500 px-3.5 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100"
-          >
-            Correr simulacion
-          </button>
-        )}
-        {simulacionActiva && !simulacion && simulando && (
-          <p className="text-sm text-ink-600">Consultando elevacion y clima real, resolviendo el balance...</p>
-        )}
-        {simulacionActiva && simulacion && (
-          <SimulacionInundacion
-            simulacion={simulacion}
-            parametros={parametrosSim}
-            recalculando={simulando}
-            onCambiar={setParametrosSim}
-            onRestablecer={() => {
-              const reales: ParametrosSimulacion = {
-                ...parametrosSim,
-                vientoKmh: Math.round(simulacion.parametros?.vientoKmh ?? parametrosSim.vientoKmh),
-                direccionVientoDeg: Math.round(simulacion.parametros?.direccionVientoDeg ?? parametrosSim.direccionVientoDeg),
-                lluvia5DiasMm: Math.round(simulacion.parametros?.lluvia5DiasMm ?? parametrosSim.lluvia5DiasMm),
-                humedadSueloM3m3: simulacion.parametros?.humedadSueloM3m3 ?? parametrosSim.humedadSueloM3m3,
-              };
-              setParametrosSim(reales);
-              setParametrosAplicados(reales);
-            }}
-          />
-        )}
+      {/* La simulacion se unifico en la pestania Meteorologia: es una sola cosa y vive en un
+          solo lugar, y ademas corre incluyendo el terreno de alrededor, que desde el lote suelto
+          no se podia. Desde aca se entra con este lote ya seleccionado. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-paper-300 bg-paper-50 p-5">
+        <div>
+          <h2 className="font-display text-lg font-medium text-ink-950">Simulacion hidrologica de anegamiento</h2>
+          <p className="mt-1 max-w-xl text-xs text-ink-600">
+            Balance de agua hora a hora sobre la elevacion real, incluyendo el terreno vecino que drena hacia el
+            lote. Se corre desde Meteorologia, donde tambien podes compararlo con el resto del predio.
+          </p>
+        </div>
+        <Link
+          href={`/establecimientos/${id}/meteorologia`}
+          className="shrink-0 rounded-full border border-brand-500 px-3.5 py-1.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-100"
+        >
+          Simular este lote →
+        </Link>
       </div>
 
       <ConfirmarBorrado
@@ -289,28 +205,6 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
         onCerrar={() => setConfirmandoBorrado(false)}
       />
 
-      <ActivoForm
-        key={activoAEditar?.id ?? (ubicacionNuevoActivo ? "activo-nuevo" : "activo-cerrado")}
-        loteId={loteId}
-        lotes={lotesDelEstablecimiento}
-        ubicacionNueva={ubicacionNuevoActivo}
-        activoAEditar={activoAEditar}
-        onCerrar={() => {
-          setUbicacionNuevoActivo(null);
-          setActivoAEditar(null);
-        }}
-      />
-
-      <CultivoForm
-        key={cultivoAEditar?.id ?? (anilloNuevaZona ? "nuevo" : "cerrado")}
-        loteId={loteId}
-        anilloNuevo={anilloNuevaZona}
-        cultivoAEditar={cultivoAEditar}
-        onCerrar={() => {
-          setAnilloNuevaZona(null);
-          setCultivoAEditar(null);
-        }}
-      />
     </motion.div>
   );
 }

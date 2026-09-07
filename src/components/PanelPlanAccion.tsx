@@ -60,21 +60,25 @@ export function PanelPlanAccion({ establecimientoId }: { establecimientoId: stri
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-1.5">
-            <p className="text-sm uppercase tracking-wide text-brand-600">Auditable, no prescriptivo</p>
-            <InfoModal titulo="Por que este plan no es una prescripcion">
+            <p className="text-sm uppercase tracking-wide text-brand-600">Qué atender primero</p>
+            <InfoModal titulo="Por qué este plan no es una prescripción">
               <p>
                 El sistema no dice &ldquo;haga esto&rdquo;: ordena los activos por un puntaje calculado con reglas visibles
-                (impacto economico, urgencia por riesgo del lote, recursos necesarios para movilizarlo y
-                reversibilidad del dano) y muestra el aporte de cada criterio para cada activo.
+                (impacto económico, urgencia por riesgo del lote, recursos necesarios para movilizarlo y
+                reversibilidad del daño) y muestra el aporte de cada criterio para cada activo.
               </p>
               <p>
-                Es una decision deliberada: un sistema que prescribe acciones de manejo agropecuario puede quedar
-                encuadrado como asesoramiento profesional matriculado, y la decision final —con el contexto local
+                Es una decisión deliberada: un sistema que prescribe acciones de manejo agropecuario puede quedar
+                encuadrado como asesoramiento profesional matriculado, y la decisión final —con el contexto local
                 que el sistema no ve— siempre queda en el productor o el asesor.
               </p>
             </InfoModal>
           </div>
-          <h2 className="font-display text-lg font-medium text-ink-950">Plan de accion priorizado</h2>
+          <h2 className="font-display text-lg font-medium text-ink-950">Plan de acción priorizado</h2>
+          <p className="mt-1 max-w-xl text-sm text-ink-600">
+            Si hay que sacar cosas del campo antes de una inundación, no se puede con todo a la vez. Esta lista
+            ordena tus activos por cuánto conviene atender cada uno primero, y muestra de dónde sale ese orden.
+          </p>
         </div>
         <button
           onClick={() => generar.mutate()}
@@ -86,9 +90,13 @@ export function PanelPlanAccion({ establecimientoId }: { establecimientoId: stri
       </div>
 
       {!plan && (
-        <p className="rounded-xl border border-dashed border-paper-300 p-6 text-center text-sm text-ink-600">
-          Todavia no se genero un plan de accion.
-        </p>
+        <div className="rounded-xl border border-dashed border-paper-300 p-6 text-center">
+          <p className="text-sm text-ink-700">Todavía no calculaste el orden de prioridad.</p>
+          <p className="mx-auto mt-1 max-w-md text-xs text-ink-600">
+            Se calcula con los activos que tengas cargados y el riesgo de cada lote. Si todavía no cargaste activos,
+            hacelo desde la pantalla de cada lote.
+          </p>
+        </div>
       )}
 
       <AnimatePresence mode="wait">
@@ -129,6 +137,7 @@ export function PanelPlanAccion({ establecimientoId }: { establecimientoId: stri
                     </div>
                     <span className="font-mono text-sm text-ink-600">{item.scorePrioridad.toFixed(2)}</span>
                   </div>
+                  <p className="mt-2.5 text-sm text-ink-800">{item.recomendacion}</p>
                   <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
                     {CRITERIOS.map((c, i) => (
                       <BarraCriterio

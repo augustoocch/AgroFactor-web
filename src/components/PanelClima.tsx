@@ -93,7 +93,7 @@ function TarjetaDia({ dia, i }: { dia: PronosticoDiario; i: number }) {
   );
 }
 
-/** Precipitacion, temperatura, humedad y viento reales (Open-Meteo), con la interpretacion agronomica dia a dia. */
+/** Precipitación, temperatura, humedad y viento reales (Open-Meteo), con la interpretación agronómica día a día. */
 export function PanelClima({ loteReferenciaId }: { loteReferenciaId: string }) {
   const { data: pronostico, isLoading } = useQuery({
     queryKey: ["clima", loteReferenciaId],
@@ -113,18 +113,18 @@ export function PanelClima({ loteReferenciaId }: { loteReferenciaId: string }) {
         {actual && <ClimaEscena condicion={actual.condicion} />}
         <div className="relative flex items-center gap-1.5">
           <p className="text-sm uppercase tracking-wide text-brand-200">Open-Meteo · NASA POWER</p>
-          <InfoModal titulo="De donde sale este numero">
+          <InfoModal titulo="De dónde sale este número">
             <p>
-              <strong>Ultimos 90 dias</strong>: precipitacion real medida por satelite/reanalisis (NASA POWER). Si
-              supera los 300mm, la napa freatica de la Cuenca del Salado suele estar cerca de saturacion.
+              <strong>Últimos 90 días</strong>: precipitación real medida por satélite/reanálisis (NASA POWER). Si
+              supera los 300mm, la napa freática de la Cuenca del Salado suele estar cerca de saturación.
             </p>
             <p>
-              <strong>Proximos 7 dias</strong>: pronostico real (Open-Meteo). Si supera los 100mm es un evento de
-              lluvia extraordinaria — sube directamente la urgencia del plan de accion.
+              <strong>Próximos 7 días</strong>: pronóstico real (Open-Meteo). Si supera los 100mm es un evento de
+              lluvia extraordinaria — sube directamente la urgencia del plan de acción.
             </p>
             <p className="text-xs text-ink-600">
-              Los &quot;impactos&quot; por dia son heuristicas agronomicas basadas en umbrales de buenas practicas
-              (deriva, helada, enfermedades fungosas) — no un pronostico certero de ninguna de esas condiciones.
+              Los &quot;impactos&quot; por día son heurísticas agronómicas basadas en umbrales de buenas prácticas
+              (deriva, helada, enfermedades fungosas) — no un pronóstico certero de ninguna de esas condiciones.
             </p>
           </InfoModal>
         </div>
@@ -148,7 +148,7 @@ export function PanelClima({ loteReferenciaId }: { loteReferenciaId: string }) {
 
       {dias.length > 0 && (
         <div>
-          <p className="mb-2 text-sm font-medium text-ink-800">Proximos {dias.length} dias</p>
+          <p className="mb-2 text-sm font-medium text-ink-800">Próximos {dias.length} días</p>
           <div className="flex gap-2.5 overflow-x-auto pb-1">
             {dias.map((dia, i) => (
               <TarjetaDia key={dia.fecha} dia={dia} i={i} />
@@ -163,14 +163,14 @@ export function PanelClima({ loteReferenciaId }: { loteReferenciaId: string }) {
           <div className="space-y-3">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-ink-700">
-                <span>Ultimos 90 dias</span>
+                <span>Últimos 90 días</span>
                 <span className="font-mono">{pronostico.precipitacionUltimos90DiasMm.toFixed(0)} / {UMBRAL_SATURACION_90D_MM} mm</span>
               </div>
               <BarraProgreso valor={pronostico.precipitacionUltimos90DiasMm} umbral={UMBRAL_SATURACION_90D_MM} color="var(--color-brand-600)" />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-ink-700">
-                <span>Pronostico proximos 7 dias</span>
+                <span>Pronóstico próximos 7 días</span>
                 <span className="font-mono">{sumaProximos7.toFixed(0)} / {UMBRAL_EVENTO_7D_MM} mm</span>
               </div>
               <BarraProgreso

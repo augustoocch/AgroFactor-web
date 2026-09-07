@@ -7,7 +7,7 @@ import { BrandMark } from "@/components/BrandMark";
 
 const ETIQUETA_ROL: Record<string, string> = {
   PRODUCTOR: "Productor",
-  ASESOR: "Asesor tecnico",
+  ASESOR: "Asesor técnico",
   ADMINISTRADOR: "Administrador",
 };
 

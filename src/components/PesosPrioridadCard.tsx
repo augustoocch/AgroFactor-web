@@ -21,7 +21,7 @@ export function PesosPrioridadCard({ establecimiento }: { establecimiento: Estab
             prioridad maxima, en uno ganadero la hacienda y las reservas, en uno agricola la maquinaria y los
             depositos.
           </p>
-          <p>Por eso los pesos no son un numero fijo: se definen por perfil productivo y se pueden ajustar por establecimiento si el contexto local lo justifica.</p>
+          <p>Por eso los pesos no son un número fijo: se definen por perfil productivo y se pueden ajustar por establecimiento si el contexto local lo justifica.</p>
         </InfoModal>
       </div>
       <p className="mt-0.5 text-sm text-ink-700">Pesos del motor de priorizacion para este establecimiento</p>

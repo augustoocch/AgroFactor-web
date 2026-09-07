@@ -4,7 +4,7 @@ import { Canvas } from "@react-three/fiber";
 import { useEffect, useState } from "react";
 import { EscenaSimulacion, VISTAS } from "@/components/EscenaSimulacion";
 import { InfoModal } from "@/components/InfoModal";
-import type { SimulacionInundacion as Simulacion } from "@/lib/types";
+import type { Coordenada, SimulacionInundacion as Simulacion } from "@/lib/types";
 
 export interface ParametrosSimulacion {
   modo: "real" | "sintetico";
@@ -95,6 +95,8 @@ function Metrica({ etiqueta, valor, detalle }: { etiqueta: string; valor: string
 
 interface Props {
   simulacion: Simulacion;
+  /** Anillos de los lotes simulados: se dibujan como contorno real sobre el terreno. */
+  contornos?: Coordenada[][];
   parametros: ParametrosSimulacion;
   recalculando: boolean;
   onCambiar: (p: ParametrosSimulacion) => void;
@@ -103,6 +105,7 @@ interface Props {
 
 export function SimulacionInundacion({
   simulacion,
+  contornos,
   parametros,
   recalculando,
   onCambiar,
@@ -163,6 +166,7 @@ export function SimulacionInundacion({
                 mostrarFlechas={mostrarFlechas}
                 mostrarLluvia={mostrarLluvia}
                 anchoLoteM={parametrosHidro.celdaM * Math.max(simulacion.terreno.columnas - 1, 1)}
+                contornos={contornos}
                 exageracion={exageracion}
               />
             </Canvas>
@@ -299,7 +303,7 @@ export function SimulacionInundacion({
               onChange={(v) => onCambiar({ ...parametros, escenarioLluviaMm: v })}
             />
             <Deslizador
-              etiqueta="Duracion"
+              etiqueta="Duración"
               valor={parametros.horas}
               min={6}
               max={72}
@@ -311,13 +315,13 @@ export function SimulacionInundacion({
 
           <Grupo titulo="Estado previo del suelo">
             <Deslizador
-              etiqueta="Lluvia previa (5 dias)"
+              etiqueta="Lluvia previa (5 días)"
               valor={parametros.lluvia5DiasMm}
               min={0}
               max={150}
               paso={5}
               unidad=" mm"
-              ayuda="Define la condicion de humedad antecedente del metodo SCS-CN."
+              ayuda="Define la condición de humedad antecedente del método SCS-CN."
               onChange={(v) => onCambiar({ ...parametros, lluvia5DiasMm: v })}
             />
             <Deslizador
@@ -359,40 +363,40 @@ export function SimulacionInundacion({
       {/* --- Resultados del balance hidrico --- */}
       <div>
         <div className="mb-2 flex items-center gap-1.5">
-          <h3 className="text-sm font-medium text-ink-950">Balance hidrico del evento</h3>
-          <InfoModal titulo="Como se calcula la simulacion">
+          <h3 className="text-sm font-medium text-ink-950">Balance hídrico del evento</h3>
+          <InfoModal titulo="Cómo se calcula la simulación">
             <p>
-              Cada hora se resuelve un balance de agua celda por celda sobre el modelo de elevacion real (SRTM 30m):
+              Cada hora se resuelve un balance de agua celda por celda sobre el modelo de elevación real (SRTM 30m):
             </p>
             <ul className="list-disc space-y-1 pl-4">
               <li>
-                <strong>Numero de Curva (SCS-CN, USDA-NRCS)</strong>: cuanta lluvia se transforma en escorrentia segun
-                el uso del suelo y el grupo hidrologico (D en la Pampa Deprimida), corregido por la lluvia real de los
-                ultimos 5 dias.
+                <strong>Número de Curva (SCS-CN, USDA-NRCS)</strong>: cuánta lluvia se transforma en escorrentía según
+                el uso del suelo y el grupo hidrológico (D en la Pampa Deprimida), corregido por la lluvia real de los
+                últimos 5 días.
               </li>
               <li>
-                <strong>Infiltracion</strong>: tasa tipo Horton gobernada por el agua que el perfil ya tiene, acotada
-                por el almacenamiento potencial S del metodo CN.
+                <strong>Infiltración</strong>: tasa tipo Horton gobernada por el agua que el perfil ya tiene, acotada
+                por el almacenamiento potencial S del método CN.
               </li>
               <li>
-                <strong>Evapotranspiracion FAO-56 Penman-Monteith</strong>: con temperatura, humedad, viento a 2m y
-                radiacion solar reales.
+                <strong>Evapotranspiración FAO-56 Penman-Monteith</strong>: con temperatura, humedad, viento a 2m y
+                radiación solar reales.
               </li>
               <li>
                 <strong>Escurrimiento con Manning</strong>: v = (1/n)·h^(2/3)·S^(1/2), con la pendiente sacada del DEM
-                y reparto hacia las celdas de menor carga hidraulica.
+                y reparto hacia las celdas de menor carga hidráulica.
               </li>
             </ul>
             <p className="text-xs text-ink-600">
-              Es un modelo 2D simplificado de onda de difusion, no un solver de Saint-Venant: sirve para comparar
-              comportamiento (donde se junta el agua, cuanto tarda, cuanto infiltra), no para diseñar obra hidraulica.
+              Es un modelo 2D simplificado de onda de difusión, no un solver de Saint-Venant: sirve para comparar
+              comportamiento (dónde se junta el agua, cuánto tarda, cuánto infiltra), no para diseñar obra hidráulica.
             </p>
           </InfoModal>
         </div>
 
         <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
           <Metrica
-            etiqueta="Lamina maxima"
+            etiqueta="Lámina máxima"
             valor={`${(parametrosHidro.laminaMaximaMm / 10).toFixed(1)} cm`}
             detalle={`Pico a la hora ${parametrosHidro.horaPicoAnegamiento}`}
           />
@@ -410,6 +414,18 @@ export function SimulacionInundacion({
             etiqueta="Escurre fuera del lote"
             valor={`${parametrosHidro.escurrimientoFueraDelLoteMm.toFixed(0)} mm`}
             detalle={`Pendiente media ${parametrosHidro.pendienteMediaPct.toFixed(2)}%`}
+          />
+          {/* La contracara del anterior, y el dato que antes no existia: el agua que anega un
+              campo muchas veces no cayo sobre el, bajo de al lado. Cero significa que el entorno
+              es plano y no aporta, que es informacion util y no una capa vacia. */}
+          <Metrica
+            etiqueta="Entra desde afuera"
+            valor={`${parametrosHidro.aporteExternoMm.toFixed(0)} mm`}
+            detalle={
+              parametrosHidro.aporteExternoMm > 0
+                ? `${((parametrosHidro.aporteExternoMm / Math.max(parametrosHidro.lluviaTotalMm, 1)) * 100).toFixed(0)}% de lo que llovio, desde los alrededores`
+                : "El terreno de alrededor no drena hacia el campo"
+            }
           />
           <Metrica
             etiqueta="Numero de Curva"
