@@ -67,7 +67,7 @@ export default function RegisterPage() {
           <div className="space-y-1 lg:hidden">
             <div className="flex items-center gap-2">
               <BrandMark className="h-7 w-7" />
-              <span className="font-display text-lg font-medium">AgroRisk</span>
+              <span className="font-display text-lg font-medium">AgroFactor</span>
             </div>
           </div>
 

@@ -9,12 +9,10 @@ const COLOR_COTA_BAJA = new THREE.Color("#4a6b3a"); // verde bajo: zonas deprimi
 const COLOR_COTA_MEDIA = new THREE.Color("#8a7a4a");
 const COLOR_COTA_ALTA = new THREE.Color("#b5a179"); // loma clara
 
-// Estratos del perfil del suelo, de arriba hacia abajo (horizonte A, B textural, C / material madre).
-const ESTRATOS = [
-  { hasta: 0.18, color: new THREE.Color("#4a3b28") },
-  { hasta: 0.55, color: new THREE.Color("#6b4f2f") },
-  { hasta: 1.0, color: new THREE.Color("#8c7a55") },
-];
+// Tierra del corte: humus oscuro arriba, material madre mas claro y seco abajo. Es un degrade
+// continuo, no capas: el corte tiene que leerse como un pan de tierra macizo, no como una torta.
+const TIERRA_SUPERIOR = new THREE.Color("#4a3524");
+const TIERRA_INFERIOR = new THREE.Color("#9c8560");
 
 export interface GeometriaTerreno {
   superficie: THREE.BufferGeometry;
@@ -29,11 +27,27 @@ function colorPorAltura(t: number): THREE.Color {
     : COLOR_COTA_MEDIA.clone().lerp(COLOR_COTA_ALTA, (t - 0.5) / 0.5);
 }
 
-function colorEstrato(profundidadRelativa: number): THREE.Color {
-  for (const estrato of ESTRATOS) {
-    if (profundidadRelativa <= estrato.hasta) return estrato.color;
-  }
-  return ESTRATOS[ESTRATOS.length - 1].color;
+function colorTierra(profundidadRelativa: number): THREE.Color {
+  return TIERRA_SUPERIOR.clone().lerp(TIERRA_INFERIOR, profundidadRelativa);
+}
+
+/** Ruido determinista (hash estilo GLSL). */
+function aleatorio(semilla: number): number {
+  const x = Math.sin(semilla * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/** Moteado de dos escalas (manchones + grano fino) mas sombra hacia la base, para que el corte de tierra no se vea plano. */
+function jaspeado(color: THREE.Color, x: number, y: number, z: number, profundidadRelativa: number): THREE.Color {
+  const manchon = aleatorio(Math.floor(x * 3) * 12.9898 + Math.floor(y * 3) * 78.233 + Math.floor(z * 3) * 37.719) * 0.26 - 0.13;
+  const grano = aleatorio(x * 91.7 + y * 47.3 + z * 63.1) * 0.14 - 0.07;
+  const ruido = manchon + grano;
+  const sombra = 1 - profundidadRelativa * 0.22;
+  return new THREE.Color(
+    Math.min(Math.max((color.r + ruido) * sombra, 0), 1),
+    Math.min(Math.max((color.g + ruido * 0.85) * sombra, 0), 1),
+    Math.min(Math.max((color.b + ruido * 0.6) * sombra, 0), 1),
+  );
 }
 
 export function posicionX(columna: number, columnas: number): number {
@@ -44,10 +58,7 @@ export function posicionZ(fila: number, filas: number): number {
   return (fila / Math.max(filas - 1, 1) - 0.5) * ANCHO_ESCENA;
 }
 
-/**
- * Construye el lote como un bloque de tierra solido (superficie + cuatro paredes + fondo), no
- * como una lamina: asi se ve el volumen del suelo y sus horizontes al girar la camara.
- */
+/** Construye el lote como un bloque de tierra solido (superficie + cuatro paredes + fondo), no una lamina. */
 export function construirTerreno(
   grid: number[][],
   elevacionMinM: number,
@@ -58,9 +69,8 @@ export function construirTerreno(
   const filas = grid.length;
   const columnas = grid[0].length;
   const rango = Math.max(elevacionMaxM - elevacionMinM, 0.01);
-  // Escala vertical REAL (metros del terreno / metros por unidad de escena) multiplicada por un
-  // factor de exageracion explicito y ajustable. Normalizar el relieve al mismo alto siempre
-  // seria mas vistoso pero mentiroso: un lote plano se veria igual que uno con lomas.
+  // Escala vertical real x factor de exageracion: normalizar el relieve seria mas vistoso pero
+  // mentiroso, un lote plano se veria igual que uno con lomas.
   const alturaDe = (fila: number, columna: number) =>
     ((grid[fila][columna] - elevacionMinM) / metrosPorUnidad) * exageracion;
   const yBase = -ESPESOR_BLOQUE;
@@ -98,25 +108,47 @@ export function construirTerreno(
   const posBloque: number[] = [];
   const colBloque: number[] = [];
 
+  const lerpVec = (a: [number, number, number], b: [number, number, number], t: number): [number, number, number] => [
+    a[0] + (b[0] - a[0]) * t,
+    a[1] + (b[1] - a[1]) * t,
+    a[2] + (b[2] - a[2]) * t,
+  ];
+
+  // v1-v2 es el borde de arriba, v4-v3 el de abajo (yBase); v4 debajo de v1, v3 debajo de v2.
+  //
+  // El orden de los vertices (v1,v3,v2) va al reves de lo que parece natural, a proposito: define
+  // el winding, y con el winding contrario la normal de cada cara apunta HACIA ADENTRO del bloque.
+  // Con el culling por defecto de three.js (FrontSide) eso hace que las paredes no se dibujen
+  // desde afuera y se vea el interior del volumen: un bloque hueco, una caja de zapatos vacia.
+  //
+  // Subdividido en franjas horizontales para que el moteado tenga vertices donde variar; si no,
+  // cada pared es un unico quad de dos vertices de alto y queda un degrade liso sin textura.
+  const SUBDIVISIONES_PARED = 14;
   const agregarQuad = (
     v1: [number, number, number],
     v2: [number, number, number],
     v3: [number, number, number],
     v4: [number, number, number],
   ) => {
-    const alturaTope = Math.max(v1[1], v2[1]);
-    for (const [vertice, esProfundo] of [
-      [v1, false],
-      [v2, false],
-      [v3, true],
-      [v1, false],
-      [v3, true],
-      [v4, true],
-    ] as const) {
-      posBloque.push(vertice[0], vertice[1], vertice[2]);
-      const profundidad = esProfundo ? 1 : (alturaTope - vertice[1]) / (alturaTope - yBase || 1);
-      const color = colorEstrato(profundidad);
-      colBloque.push(color.r, color.g, color.b);
+    for (let i = 0; i < SUBDIVISIONES_PARED; i++) {
+      const t0 = i / SUBDIVISIONES_PARED;
+      const t1 = (i + 1) / SUBDIVISIONES_PARED;
+      const p1 = lerpVec(v1, v4, t0);
+      const p2 = lerpVec(v2, v3, t0);
+      const p3 = lerpVec(v2, v3, t1);
+      const p4 = lerpVec(v1, v4, t1);
+      for (const [vertice, profundidad] of [
+        [p1, t0],
+        [p3, t1],
+        [p2, t0],
+        [p1, t0],
+        [p4, t1],
+        [p3, t1],
+      ] as const) {
+        posBloque.push(vertice[0], vertice[1], vertice[2]);
+        const color = jaspeado(colorTierra(profundidad), vertice[0], vertice[1], vertice[2], profundidad);
+        colBloque.push(color.r, color.g, color.b);
+      }
     }
   };
 

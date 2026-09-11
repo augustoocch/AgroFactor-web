@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, clasificarError } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
-import type { Activo, CultivoImplantado, Lote } from "@/lib/types";
+import { InfoModal } from "@/components/InfoModal";
+import type { AfectacionSugerida, Activo, CultivoImplantado, Lote } from "@/lib/types";
 
 /**
  * El dato central de una DDJJ real de emergencia agropecuaria (Ley 26.509): el formulario oficial
@@ -26,6 +27,15 @@ export function PanelDeclaracionDanos({ establecimientoId }: { establecimientoId
     queryFn: () => api.get<CultivoImplantado[]>(`/establecimientos/${establecimientoId}/cultivos`),
   });
 
+  // Sugerencia de % calculada sobre lo que la simulacion ya midio en cada lote. Es opcional por
+  // diseño: si el endpoint falla o no hay evento, la pantalla sigue funcionando exactamente como
+  // antes y el productor declara a mano. Nunca bloquea la declaracion.
+  const { data: sugerencias = [] } = useQuery({
+    queryKey: ["afectacion-sugerida", establecimientoId],
+    queryFn: () => api.get<AfectacionSugerida[]>(`/establecimientos/${establecimientoId}/afectacion-sugerida`),
+    retry: false,
+  });
+
   const nombreDeLote = (loteId: string | null) => lotes.find((l) => l.id === loteId)?.nombre ?? "sin lote";
 
   if (activos.length === 0 && cultivos.length === 0) return null;
@@ -36,9 +46,9 @@ export function PanelDeclaracionDanos({ establecimientoId }: { establecimientoId
       <h2 className="font-display text-lg font-medium text-ink-950">Declaración de daños</h2>
       <p className="mt-1 max-w-2xl text-sm text-ink-600">
         La Ley 26.509 define &quot;emergencia agropecuaria&quot; como un daño de al menos 50% sobre la producción, y
-        &quot;desastre agropecuario&quot; desde el 80%. Ese porcentaje lo declarás vos por cada activo o cultivo afectado —
-        el sistema no lo puede calcular, solo estimar exposición. Se usa en el informe y queda como respaldo de la
-        DDJJ que se presenta ante la autoridad provincial.
+        &quot;desastre agropecuario&quot; desde el 80%. Ese porcentaje lo declarás vos por cada activo o cultivo afectado, y
+        es tuyo: el sistema propone un número cuando tiene con qué calcularlo, pero no lo escribe ni lo corrige. Se usa
+        en el informe y queda como respaldo de la DDJJ que se presenta ante la autoridad provincial.
       </p>
 
       {cultivos.length > 0 && (
@@ -46,7 +56,13 @@ export function PanelDeclaracionDanos({ establecimientoId }: { establecimientoId
           <p className="text-xs font-medium uppercase tracking-wide text-ink-600">Cultivos</p>
           <ul className="space-y-1.5">
             {cultivos.map((c) => (
-              <FilaDanoCultivo key={c.id} cultivo={c} nombreLote={nombreDeLote(c.loteId)} establecimientoId={establecimientoId} />
+              <FilaDanoCultivo
+                key={c.id}
+                cultivo={c}
+                nombreLote={nombreDeLote(c.loteId)}
+                establecimientoId={establecimientoId}
+                sugerencia={sugerencias.find((s) => s.cultivoId === c.id) ?? null}
+              />
             ))}
           </ul>
         </div>
@@ -73,6 +89,7 @@ function FilaDano({
   fechaDeclarada,
   guardando,
   onGuardar,
+  sugerencia,
 }: {
   titulo: string;
   subtitulo: string;
@@ -80,6 +97,7 @@ function FilaDano({
   fechaDeclarada: string | null;
   guardando: boolean;
   onGuardar: (porcentaje: number) => void;
+  sugerencia?: AfectacionSugerida | null;
 }) {
   const [valor, setValor] = useState(valorGuardado != null ? String(valorGuardado) : "");
   const numero = Number(valor);
@@ -96,6 +114,7 @@ function FilaDano({
             <span> · declarado el {new Date(fechaDeclarada).toLocaleDateString("es-AR")}</span>
           )}
         </p>
+        {sugerencia && <Sugerencia sugerencia={sugerencia} onUsar={setValor} />}
       </div>
       <div className="flex items-center gap-1.5">
         <input
@@ -120,14 +139,84 @@ function FilaDano({
   );
 }
 
+/**
+ * Los dos porcentajes sugeridos, cada uno con su cuenta a la vista y un botón para copiarlo al
+ * campo. Se muestran los DOS y no uno promediado porque miden cosas distintas: la merma de
+ * rendimiento es lo que no vas a cosechar, y el daño es el costo de implantación que se tira donde
+ * la planta no llega a cosecha. El botón solo escribe el número en el campo; guardar sigue siendo
+ * un acto explícito del productor.
+ */
+function Sugerencia({
+  sugerencia,
+  onUsar,
+}: {
+  sugerencia: AfectacionSugerida;
+  onUsar: (valor: string) => void;
+}) {
+  if (!sugerencia.haySugerencia) {
+    return (
+      <p className="mt-1 max-w-xl text-[11px] text-ink-500">{sugerencia.motivo}</p>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      <span className="text-[11px] text-ink-600">Sugerido:</span>
+      <BotonSugerido
+        etiqueta="pérdida de producción"
+        valor={sugerencia.perdidaProduccionPct}
+        onUsar={onUsar}
+      />
+      <BotonSugerido etiqueta="daño" valor={sugerencia.danoPct} onUsar={onUsar} />
+      <InfoModal titulo="De dónde sale este porcentaje" etiqueta="cómo se calculó">
+        <p>
+          El agua estuvo {sugerencia.diasAnegado} día(s) sobre el lote y llegó a cubrir el{" "}
+          {sugerencia.superficieAnegadaPct}% de su superficie, según la simulación hidrológica que el sistema corre y
+          guarda todos los días.
+        </p>
+        <p>
+          <strong>Pérdida de producción, {sugerencia.perdidaProduccionPct}%.</strong> {sugerencia.formulaPerdida}
+        </p>
+        <p>
+          <strong>Daño, {sugerencia.danoPct}%.</strong> {sugerencia.formulaDano}
+        </p>
+        <p className="text-clay-600">{sugerencia.advertencia}</p>
+      </InfoModal>
+    </div>
+  );
+}
+
+function BotonSugerido({
+  etiqueta,
+  valor,
+  onUsar,
+}: {
+  etiqueta: string;
+  valor: number | null;
+  onUsar: (valor: string) => void;
+}) {
+  if (valor == null) return null;
+  return (
+    <button
+      onClick={() => onUsar(String(valor))}
+      title={`Copiar ${valor}% al campo`}
+      className="rounded-full border border-brand-500/60 bg-brand-100/40 px-2 py-0.5 text-[11px] font-medium text-brand-700 transition-colors hover:bg-brand-100"
+    >
+      {etiqueta} {valor}%
+    </button>
+  );
+}
+
 function FilaDanoCultivo({
   cultivo,
   nombreLote,
   establecimientoId,
+  sugerencia,
 }: {
   cultivo: CultivoImplantado;
   nombreLote: string;
   establecimientoId: string;
+  sugerencia: AfectacionSugerida | null;
 }) {
   const { notificar } = useToast();
   const queryClient = useQueryClient();
@@ -153,6 +242,7 @@ function FilaDanoCultivo({
       fechaDeclarada={cultivo.danoDeclaradoEn}
       guardando={guardar.isPending}
       onGuardar={(p) => guardar.mutate(p)}
+      sugerencia={sugerencia}
     />
   );
 }

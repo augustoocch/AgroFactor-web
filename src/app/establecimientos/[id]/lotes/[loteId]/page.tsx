@@ -7,11 +7,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { use, useState } from "react";
 import { ConfirmarBorrado } from "@/components/ConfirmarBorrado";
+import { ContextoEnsoChip } from "@/components/ContextoEnsoChip";
 import { ListaActivos } from "@/components/ListaActivos";
 import { ListaCultivos } from "@/components/ListaCultivos";
 import { PronosticoDiaADia } from "@/components/PronosticoDiaADia";
 import { RiesgoChip } from "@/components/RiesgoChip";
-import { InfoModal } from "@/components/InfoModal";
+import { InfoAside } from "@/components/InfoAside";
 import { api, clasificarError } from "@/lib/api";
 import { guardarGeometriaPendiente } from "@/lib/geometria-pendiente";
 import { useReubicarActivo } from "@/lib/hooks";
@@ -25,6 +26,12 @@ import type {
 } from "@/lib/types";
 
 const MapaLote = dynamic(() => import("@/components/MapaLote").then((m) => m.MapaLote), { ssr: false });
+
+const FASE_ENSO_LEGIBLE: Record<"EL_NINO" | "LA_NINA" | "NEUTRAL", string> = {
+  EL_NINO: "El Niño (fase históricamente más lluviosa en la región)",
+  LA_NINA: "La Niña (fase históricamente más seca en la región)",
+  NEUTRAL: "neutral",
+};
 
 export default function LoteDetallePage({ params }: PageProps<"/establecimientos/[id]/lotes/[loteId]">) {
   const { id, loteId } = use(params);
@@ -99,16 +106,33 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
           {evaluacion ? (
             <>
               <RiesgoChip score={evaluacion.scoreSusceptibilidad} />
-              <InfoModal titulo="Como se calcula este score">
+              {evaluacion.factores.faseEnso && <ContextoEnsoChip fase={evaluacion.factores.faseEnso} />}
+              <InfoAside titulo="Como se calcula este score" etiqueta="Ver desglose completo">
                 <ul className="list-disc space-y-1 pl-4">
                   <li>Elevacion relativa: {evaluacion.factores.elevacionPercentil.toFixed(2)}</li>
                   <li>Antecedentes historicos: {evaluacion.factores.antecedentesHistoricos.toFixed(2)}</li>
                   <li>Tipo de suelo: {evaluacion.factores.tipoSueloScore.toFixed(2)}</li>
                   <li>Precipitacion reciente real (NASA POWER): {evaluacion.factores.precipitacionRecienteMm.toFixed(0)} mm</li>
                   <li>Precipitacion pronosticada real (Open-Meteo): {evaluacion.factores.precipitacionPronosticadaMm.toFixed(0)} mm</li>
+                  {evaluacion.factores.faseEnso && (
+                    <li>
+                      Contexto estacional (ENSO, NOAA CPC): {FASE_ENSO_LEGIBLE[evaluacion.factores.faseEnso]}
+                      {evaluacion.factores.moduladorEnso != null && ` (modulador ${evaluacion.factores.moduladorEnso.toFixed(2)})`}
+                    </li>
+                  )}
+                  {evaluacion.factores.saturacionRegionalProxy != null && (
+                    <li>
+                      Saturación regional de la cuenca (proxy de lluvia acumulada 12 meses, no es napa medida): {(evaluacion.factores.saturacionRegionalProxy * 100).toFixed(0)}%
+                    </li>
+                  )}
+                  {evaluacion.factores.probabilidadEventoExtremoPct != null && (
+                    <li>
+                      Probabilidad de evento extremo (ensemble de 30 corridas, Open-Meteo): {evaluacion.factores.probabilidadEventoExtremoPct.toFixed(0)}%
+                    </li>
+                  )}
                 </ul>
                 <p className="text-xs text-ink-600">Fuente: {evaluacion.fuenteDatos}.</p>
-              </InfoModal>
+              </InfoAside>
             </>
           ) : (
             <button

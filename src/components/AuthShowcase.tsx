@@ -36,7 +36,7 @@ export function AuthShowcase() {
         className="relative flex items-center gap-2.5"
       >
         <BrandMark className="h-8 w-8" />
-        <span className="font-display text-xl font-medium">AgroRisk</span>
+        <span className="font-display text-xl font-medium">AgroFactor</span>
       </motion.div>
 
       <div className="relative space-y-8">

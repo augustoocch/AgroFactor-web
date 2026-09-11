@@ -56,6 +56,14 @@ const MATERIAL_POR_TIPO: Partial<Record<TipoActivo, { etiqueta: string; opciones
 /** "Marca y modelo" / "Año" solo tienen sentido para un bien con fabricante y año de fabricación. */
 const TIENE_MARCA_Y_ANIO = (tipo: TipoActivo) => tipo === "MAQUINARIA";
 
+/**
+ * "Cantidad"/"Unidad" solo tienen sentido para un bien que se cuenta en una magnitud propia
+ * (cabezas de hacienda, toneladas de reserva forrajera) — un tractor, un galpón o un tramo de
+ * camino son un bien individual, no una cantidad de una unidad de medida. Antes se pedía para
+ * cualquier tipo, lo que llevaba a preguntas sin sentido como "¿qué unidad tiene un tractor?".
+ */
+const TIENE_CANTIDAD = (tipo: TipoActivo) => tipo === "HACIENDA" || tipo === "RESERVA_FORRAJERA";
+
 const CLASES_CAMPO =
   "mt-1 w-full rounded-lg border border-paper-300 bg-paper-50 px-3 py-2 text-sm outline-none focus:border-brand-500";
 
@@ -115,6 +123,7 @@ export function FormularioActivo({
   const editar = (campo: keyof typeof ficha) => (valor: string) => setFicha((f) => ({ ...f, [campo]: valor }));
 
   const tieneMarcaYAnio = TIENE_MARCA_Y_ANIO(campos.tipo);
+  const tieneCantidad = TIENE_CANTIDAD(campos.tipo);
   const categoriaTipo = CATEGORIA_POR_TIPO[campos.tipo];
   const materialTipo = MATERIAL_POR_TIPO[campos.tipo];
   const camposFichaAplicables: (keyof typeof ficha)[] = [
@@ -123,8 +132,7 @@ export function FormularioActivo({
     ...(categoriaTipo ? (["categoria"] as const) : []),
     ...(materialTipo ? (["material"] as const) : []),
     "estadoConservacion",
-    "cantidad",
-    "unidadCantidad",
+    ...(tieneCantidad ? (["cantidad", "unidadCantidad"] as const) : []),
     "alturaSobreSueloCm",
   ];
   const contar = (claves: (keyof typeof ficha)[]) => claves.filter((k) => ficha[k] !== "").length;
@@ -203,7 +211,14 @@ export function FormularioActivo({
                     onChange={(e) => {
                       const tipo = e.target.value as TipoActivo;
                       setCampos((c) => ({ ...c, tipo, movilidad: MOVILIDAD_POR_DEFECTO[tipo] }));
-                      setFicha((f) => ({ ...f, marcaModelo: "", anio: "", categoria: "", material: "" }));
+                      setFicha((f) => ({
+                        ...f,
+                        marcaModelo: "",
+                        anio: "",
+                        categoria: "",
+                        material: "",
+                        ...(TIENE_CANTIDAD(tipo) ? {} : { cantidad: "", unidadCantidad: "" }),
+                      }));
                     }}
                     className={CLASES_CAMPO}
                   >
@@ -300,14 +315,18 @@ export function FormularioActivo({
                   opciones={["Nuevo", "Muy bueno", "Bueno", "Regular", "Malo"]}
                   onChange={editar("estadoConservacion")}
                 />
-                <Texto etiqueta="Cantidad" tipo="number" valor={ficha.cantidad} onChange={editar("cantidad")} />
-                <Opciones
-                  etiqueta="Unidad"
-                  ayuda="Dimensiona la pérdida."
-                  valor={ficha.unidadCantidad}
-                  opciones={["cabezas", "toneladas", "m2", "metros", "unidades", "litros"]}
-                  onChange={editar("unidadCantidad")}
-                />
+                {tieneCantidad && (
+                  <>
+                    <Texto etiqueta="Cantidad" tipo="number" valor={ficha.cantidad} onChange={editar("cantidad")} />
+                    <Opciones
+                      etiqueta="Unidad"
+                      ayuda="Dimensiona la pérdida."
+                      valor={ficha.unidadCantidad}
+                      opciones={campos.tipo === "HACIENDA" ? ["cabezas"] : ["toneladas", "kg", "rollos", "fardos"]}
+                      onChange={editar("unidadCantidad")}
+                    />
+                  </>
+                )}
               </div>
 
               <Texto

@@ -19,7 +19,7 @@ export type Movilidad = "MOVIBLE" | "FIJO";
 
 export type MargenAccion = "NINGUNO" | "COSECHA_ANTICIPADA" | "RESIEMBRA";
 
-export type TipoReporte = "EMERGENCIA_AGROPECUARIA" | "FICHA_ARRENDAMIENTO";
+export type TipoReporte = "EMERGENCIA_AGROPECUARIA" | "FICHA_ARRENDAMIENTO" | "IMPACTO_ECONOMICO";
 
 export interface AuthResponse {
   token: string;
@@ -181,6 +181,14 @@ export interface EvaluacionRiesgo {
     tipoSueloScore: number;
     precipitacionRecienteMm: number;
     precipitacionPronosticadaMm: number;
+    // Pueden faltar si NOAA CPC (ENSO) o el ensemble de Open-Meteo no respondieron en el
+    // momento de la evaluacion — ver TFI/analisis-brechas-tecnicas-risk-engine-oceano-biomasa.md.
+    moduladorEnso: number | null;
+    faseEnso: "EL_NINO" | "LA_NINA" | "NEUTRAL" | null;
+    /** Proxy de saturacion regional (lluvia acumulada 12 meses). NO es napa freatica medida. */
+    saturacionRegionalProxy: number | null;
+    /** Informativo (ensemble de 30 corridas): no participa del score ponderado. */
+    probabilidadEventoExtremoPct: number | null;
   };
   fuenteDatos: string;
 }
@@ -347,6 +355,92 @@ export interface Reporte {
   fechaGeneracion: string;
 }
 
+// --- Impacto economico post-evento (DALA: dano / perdida / costo de recuperacion) ----------
+// Distinto de PerdidaEstimada (esa es propension pre-evento para priorizar que salvar primero,
+// no se edita nadie): este informe es interactivo, el sistema pre-genera un borrador y el
+// productor o el asesor lo ajustan caso por caso.
+
+export type CategoriaDala = "DANO" | "PERDIDA" | "COSTO_RECUPERACION";
+
+export type OrigenItemImpacto = "ESTIMADO_SISTEMA" | "EDITADO_USUARIO" | "AGREGADO_MANUAL" | "SUGERIDO_LLM";
+
+export type EstadoInformeImpacto = "BORRADOR" | "CONFIRMADO";
+
+export interface ItemImpactoEconomico {
+  id: string;
+  categoriaDala: CategoriaDala;
+  origen: OrigenItemImpacto;
+  activoId: string | null;
+  cultivoImplantadoId: string | null;
+  descripcion: string;
+  /** De donde sale la cantidad (formula citable, ej. INTA). El precio nunca tiene formula: lo carga el usuario. */
+  formulaOrigen: string | null;
+  cantidad: number | null;
+  unidad: string | null;
+  precioUnitario: number | null;
+  moneda: "USD" | "ARS";
+  montoOriginalArs: number | null;
+  tipoCambioAplicado: number | null;
+  /** Null mientras no se cargo un precio/monto: no se lo cuenta como cero en el total. */
+  montoUsd: number | null;
+  /**
+   * Esta fila declara dano sobre un lote que no registro agua durante el evento. No invalida nada
+   * -el % de afectacion es declaracion jurada del productor- pero conviene verlo antes de
+   * presentar el informe, no despues.
+   */
+  loteSinRegistroDeAgua: boolean;
+}
+
+export interface InformeImpactoEconomico {
+  id: string;
+  establecimientoId: string;
+  estado: EstadoInformeImpacto;
+  fechaEventoDesde: string | null;
+  fechaEventoHasta: string | null;
+  tipoCambioBcraUsado: number | null;
+  tipoCambioFecha: string | null;
+  generadoEn: string;
+  totalDanoUsd: number;
+  totalPerdidaUsd: number;
+  totalCostoRecuperacionUsd: number;
+  totalGeneralUsd: number;
+  /** Con que precio de mercado se armaron los montos. Null en informes anteriores a la V16. */
+  fuentePreciosHacienda: string | null;
+  fuentePreciosGranos: string | null;
+  /** Alguno de los dos mercados no respondio y se uso la tabla de referencia de respaldo. */
+  preciosSonReferencia: boolean;
+  items: ItemImpactoEconomico[];
+}
+
+// --- Duracion estimada del anegamiento ------------------------------------------------------
+//
+// Se pide aparte del informe y no dentro de el: la plata en riesgo queda congelada al momento en
+// que se genero el informe (es un documento), mientras que la duracion depende de la lluvia de
+// los ultimos 30 dias y de la pronosticada, y se responde fresca en cada consulta.
+
+/** LOCAL: evento de este campo. TRANSICION: la region ya esta cargada. FREATICO_REGIONAL: la
+ * cuenca paso el umbral y la napa esta en superficie. SIN_DRENAJE: el agua no baja y la cuenca no
+ * lo explica. */
+export type RegimenAnegamiento = "LOCAL" | "TRANSICION" | "FREATICO_REGIONAL" | "SIN_DRENAJE" | "SIN_ANEGAMIENTO";
+
+export interface SenalDuracion {
+  nombre: string;
+  detalle: string;
+  /** Cuantos dias aporta esta senal. Null cuando la senal se declaro no concluyente. */
+  aporteDias: number | null;
+  fuente: string;
+}
+
+export interface DuracionAnegamiento {
+  hayAnegamiento: boolean;
+  diasMin: number;
+  diasMax: number;
+  regimen: RegimenAnegamiento;
+  resumen: string;
+  senales: SenalDuracion[];
+  lluvia30DiasMm: number | null;
+}
+
 // --- Meteorologia distribuida dentro del predio ---------------------------------------------
 
 /**
@@ -443,4 +537,28 @@ export interface PronosticoDiaADia {
   celdaM: number | null;
   dias: DiaAnalizado[];
   motivoNoDisponible: string | null;
+}
+
+
+// --- Afectacion sugerida por cultivo --------------------------------------------------------
+//
+// El % de afectacion sigue siendo declaracion jurada del productor (Ley 26.509). Esto es una
+// sugerencia calculada sobre lo que la simulacion ya midio, para que la declaracion no arranque
+// en un campo vacio. Ver risk-engine/app/afectacion_cultivo.py para el modelo y sus limites.
+
+export interface AfectacionSugerida {
+  cultivoId: string;
+  haySugerencia: boolean;
+  /** Por que no hay sugerencia. Presente solo cuando `haySugerencia` es false. */
+  motivo: string | null;
+  /** Merma de rendimiento: superficie anegada x perdida de rendimiento por dias y estado. */
+  perdidaProduccionPct: number | null;
+  /** Costo de implantacion que se tira, solo donde el agua paso los dias de tolerancia. */
+  danoPct: number | null;
+  superficieAnegadaPct: number | null;
+  perdidaRendimientoPct: number | null;
+  diasAnegado: number | null;
+  formulaPerdida: string | null;
+  formulaDano: string | null;
+  advertencia: string | null;
 }

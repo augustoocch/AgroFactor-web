@@ -23,7 +23,7 @@ export function AppHeader() {
         <Link href="/establecimientos" className="flex items-center gap-2.5">
           <BrandMark className="h-7 w-7" />
           <span className="font-display text-[1.05rem] font-medium tracking-tight text-ink-950">
-            AgroRisk
+            AgroFactor
           </span>
         </Link>
         <div className="flex items-center gap-4">

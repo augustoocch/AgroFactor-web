@@ -1,19 +1,25 @@
 "use client";
 
-import { useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
+import { useFrame, useThree, ThreeEvent } from "@react-three/fiber";
+import { OrbitControls, Html } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { ANCHO_ESCENA, construirTerreno, posicionX, posicionZ } from "@/components/terreno3d";
-import type { Coordenada, PasoSimulacion, Terreno, TerrenoBounds } from "@/lib/types";
+import type { Coordenada, Movilidad, PasoSimulacion, Terreno, TerrenoBounds, TipoActivo } from "@/lib/types";
 
-const MAX_GOTAS = 1800;
+const MAX_GOTAS = 900;
 const COLOR_FLUJO_LENTO = new THREE.Color("#9fd4ef");
 const COLOR_FLUJO_RAPIDO = new THREE.Color("#1b6ea8");
 const COLOR_AGUA_BAJA = new THREE.Color("#7fb2d6");
 const COLOR_AGUA_ALTA = new THREE.Color("#1d4d73");
 /** Lamina (mm) desde la que se dibuja agua; por debajo el agua queda oculta dentro del terreno. */
 const LAMINA_VISIBLE_MM = 1.0;
+
+// Paleta de cielo/atmosfera segun intensidad de lluvia.
+const CIELO_CALMO = new THREE.Color("#dbe7f0");
+const CIELO_TORMENTA = new THREE.Color("#4f5c66");
+const NIEBLA_CALMA = new THREE.Color("#dbe7f0");
+const NIEBLA_TORMENTA = new THREE.Color("#6b7680");
 
 export interface VistaCamara {
   posicion: [number, number, number];
@@ -26,12 +32,28 @@ export const VISTAS: VistaCamara[] = [
   { nombre: "Perfil", posicion: [0, 2.4, 15] },
 ];
 
+/** Un activo ya proyectado sobre la grilla del terreno, listo para pintarse como marcador 3D. */
+export interface ActivoMarcador {
+  id: string;
+  nombre: string;
+  tipo: TipoActivo;
+  movilidad: Movilidad;
+  valorEstimadoUsd: number;
+  /** Posicion en indices de grilla (pueden ser fraccionarios: se interpola). */
+  fFila: number;
+  fColumna: number;
+  /** Si a la hora que se esta mostrando el agua ya supera la altura del activo. */
+  inundadoAhora: boolean;
+  /** Si en algun momento del escenario el agua llega a superarlo (aunque todavia no, a esta hora). */
+  seInundaEnEscenario: boolean;
+  horaInundacion: number | null;
+}
+
 /** Escala vertical del agua: la misma que el terreno, para que lamina y relieve sean comparables. */
 function escalaAgua(metrosPorUnidad: number, exageracion: number): number {
   return exageracion / metrosPorUnidad / 1000; // mm de lamina -> unidades de escena
 }
 
-/** Ruido determinista (hash estilo GLSL): la lluvia se ve aleatoria pero la escena es reproducible. */
 /** Une dos geometrias en una sola (para armar la flecha: astil + punta). */
 function mergeGeometrias(a: THREE.BufferGeometry, b: THREE.BufferGeometry): THREE.BufferGeometry {
   const posiciones = new Float32Array([
@@ -50,6 +72,31 @@ function aleatorio(semilla: number): number {
   return x - Math.floor(x);
 }
 
+/** Interpola `alturaDe` (definida solo en indices enteros de grilla) en una posicion fraccionaria. */
+function alturaInterpolada(
+  alturaDe: (fila: number, columna: number) => number,
+  fFila: number,
+  fColumna: number,
+  filas: number,
+  columnas: number,
+): number {
+  const f = Math.min(Math.max(fFila, 0), filas - 1);
+  const c = Math.min(Math.max(fColumna, 0), columnas - 1);
+  const f0 = Math.floor(f);
+  const c0 = Math.floor(c);
+  const f1 = Math.min(f0 + 1, filas - 1);
+  const c1 = Math.min(c0 + 1, columnas - 1);
+  const tf = f - f0;
+  const tc = c - c0;
+  return (
+    alturaDe(f0, c0) * (1 - tf) * (1 - tc) +
+    alturaDe(f0, c1) * (1 - tf) * tc +
+    alturaDe(f1, c0) * tf * (1 - tc) +
+    alturaDe(f1, c1) * tf * tc
+  );
+}
+
+/** Lluvia como trazos (cilindros estirados por caida + viento), no puntos: un trazo largo lee velocidad. */
 function Lluvia({
   intensidadMmH,
   vientoKmh,
@@ -59,54 +106,114 @@ function Lluvia({
   vientoKmh: number;
   direccionVientoDeg: number;
 }) {
-  const puntos = useRef<THREE.Points>(null);
+  const malla = useRef<THREE.InstancedMesh>(null);
 
-  const { geometria, velocidades } = useMemo(() => {
+  const geometria = useMemo(() => new THREE.CylinderGeometry(0.007, 0.007, 1, 4), []);
+
+  // Refs, no useMemo: se mutan en cada frame y se cargan en un efecto para no tocar un ref durante el render.
+  const posicionesRef = useRef<Float32Array | null>(null);
+  const velocidadesRef = useRef<Float32Array | null>(null);
+  useEffect(() => {
     const posiciones = new Float32Array(MAX_GOTAS * 3);
     const velocidades = new Float32Array(MAX_GOTAS);
     for (let i = 0; i < MAX_GOTAS; i++) {
       posiciones[i * 3] = (aleatorio(i) - 0.5) * ANCHO_ESCENA * 1.15;
       posiciones[i * 3 + 1] = aleatorio(i + 0.33) * 9;
       posiciones[i * 3 + 2] = (aleatorio(i + 0.66) - 0.5) * ANCHO_ESCENA * 1.15;
-      velocidades[i] = 6 + aleatorio(i + 0.9) * 6;
+      velocidades[i] = 7 + aleatorio(i + 0.9) * 7;
     }
-    const geometria = new THREE.BufferGeometry();
-    geometria.setAttribute("position", new THREE.BufferAttribute(posiciones, 3));
-    return { geometria, velocidades };
+    posicionesRef.current = posiciones;
+    velocidadesRef.current = velocidades;
   }, []);
   const contadorReciclado = useRef(0);
 
-  // La cantidad de gotas visibles sale de la intensidad real de esa hora de la simulacion.
   const visibles = Math.round(Math.min(intensidadMmH / 12, 1) * MAX_GOTAS);
   const arrastreX = Math.sin((direccionVientoDeg * Math.PI) / 180) * (vientoKmh / 45);
   const arrastreZ = Math.cos((direccionVientoDeg * Math.PI) / 180) * (vientoKmh / 45);
 
   useFrame((_, delta) => {
-    if (!puntos.current) return;
-    const atributo = puntos.current.geometry.getAttribute("position") as THREE.BufferAttribute;
-    const array = atributo.array as Float32Array;
+    if (!malla.current || !posicionesRef.current || !velocidadesRef.current) return;
+    const posiciones = posicionesRef.current;
+    const velocidades = velocidadesRef.current;
+    const auxiliar = new THREE.Object3D();
+
     for (let i = 0; i < visibles; i++) {
-      array[i * 3] += arrastreX * delta;
-      array[i * 3 + 1] -= velocidades[i] * delta;
-      array[i * 3 + 2] += arrastreZ * delta;
-      if (array[i * 3 + 1] < -0.5) {
-        // Reciclado de la gota: vuelve arriba en una posicion nueva del mismo ruido determinista.
+      posiciones[i * 3] += arrastreX * delta;
+      posiciones[i * 3 + 1] -= velocidades[i] * delta;
+      posiciones[i * 3 + 2] += arrastreZ * delta;
+      if (posiciones[i * 3 + 1] < -0.5) {
         const semilla = (contadorReciclado.current += 1);
-        array[i * 3] = (aleatorio(semilla) - 0.5) * ANCHO_ESCENA * 1.15;
-        array[i * 3 + 1] = 8 + aleatorio(semilla + 0.5) * 2;
-        array[i * 3 + 2] = (aleatorio(semilla + 0.75) - 0.5) * ANCHO_ESCENA * 1.15;
+        posiciones[i * 3] = (aleatorio(semilla) - 0.5) * ANCHO_ESCENA * 1.15;
+        posiciones[i * 3 + 1] = 8 + aleatorio(semilla + 0.5) * 2;
+        posiciones[i * 3 + 2] = (aleatorio(semilla + 0.75) - 0.5) * ANCHO_ESCENA * 1.15;
       }
+
+      const largo = 0.45 + velocidades[i] * 0.045;
+      auxiliar.position.set(posiciones[i * 3], posiciones[i * 3 + 1], posiciones[i * 3 + 2]);
+      auxiliar.rotation.set(Math.atan2(arrastreZ, velocidades[i]), 0, -Math.atan2(arrastreX, velocidades[i]));
+      auxiliar.scale.set(1, largo, 1);
+      auxiliar.updateMatrix();
+      malla.current.setMatrixAt(i, auxiliar.matrix);
     }
-    atributo.needsUpdate = true;
-    puntos.current.geometry.setDrawRange(0, visibles);
+    malla.current.count = visibles;
+    malla.current.instanceMatrix.needsUpdate = true;
   });
 
   if (visibles === 0) return null;
 
   return (
-    <points ref={puntos} geometry={geometria}>
-      <pointsMaterial color="#a8cde8" size={0.07} transparent opacity={0.75} sizeAttenuation />
-    </points>
+    <instancedMesh ref={malla} args={[geometria, undefined, MAX_GOTAS]} frustumCulled={false}>
+      <meshBasicMaterial color="#bcdcf0" transparent opacity={0.55} depthWrite={false} />
+    </instancedMesh>
+  );
+}
+
+/** Posiciones y tamanos de los blobs de una nube, generados una sola vez con ruido determinista. */
+const BLOBS_NUBE = Array.from({ length: 7 }, (_, i) => ({
+  x: (aleatorio(i * 3.1) - 0.5) * 3.2,
+  z: (aleatorio(i * 3.1 + 1) - 0.5) * 1.6,
+  y: aleatorio(i * 3.1 + 2) * 0.4,
+  radio: 0.5 + aleatorio(i * 3.1 + 3) * 0.45,
+}));
+
+/**
+ * Nubes de tormenta bajas. Esferas achatadas sin textura a proposito: drei `Cloud` carga una
+ * textura de un CDN externo y, si esa red falla, tira abajo el Canvas entero via Suspense.
+ */
+function CielosDeTormenta({
+  intensidadMmH,
+  vientoKmh,
+  direccionVientoDeg,
+}: {
+  intensidadMmH: number;
+  vientoKmh: number;
+  direccionVientoDeg: number;
+}) {
+  const opacidad = Math.min(intensidadMmH / 25, 1) * 0.75 + 0.05;
+  const deriva = useRef(0);
+  const grupo = useRef<THREE.Group>(null);
+  const dx = Math.sin((direccionVientoDeg * Math.PI) / 180);
+  const dz = Math.cos((direccionVientoDeg * Math.PI) / 180);
+  const geometria = useMemo(() => new THREE.SphereGeometry(1, 10, 8), []);
+
+  useFrame((_, delta) => {
+    deriva.current += delta * (0.05 + vientoKmh / 400);
+    if (grupo.current) {
+      grupo.current.position.x = Math.sin(deriva.current * 0.3) * 2 + dx * 3;
+      grupo.current.position.z = Math.cos(deriva.current * 0.3) * 2 + dz * 3;
+    }
+  });
+
+  if (opacidad <= 0.05) return null;
+
+  return (
+    <group ref={grupo} position={[0, 8.5, 0]} scale={[1, 0.55, 1]}>
+      {BLOBS_NUBE.map((blob, i) => (
+        <mesh key={i} position={[blob.x, blob.y, blob.z]} scale={blob.radio} geometry={geometria}>
+          <meshLambertMaterial color="#7c8791" transparent opacity={opacidad} depthWrite={false} />
+        </mesh>
+      ))}
+    </group>
   );
 }
 
@@ -126,8 +233,6 @@ function FlechasEscurrimiento({
   const columnas = flujo[0]?.length ?? 0;
   const total = filas * columnas;
 
-  // Flecha de verdad (astil + punta) en vez de un cono suelto: apoyada casi horizontal sobre el
-  // agua, se lee la direccion de un vistazo.
   const geometria = useMemo(() => {
     const punta = new THREE.ConeGeometry(0.055, 0.16, 6);
     punta.translate(0, 0.1, 0);
@@ -139,8 +244,7 @@ function FlechasEscurrimiento({
     return flecha;
   }, []);
 
-  // Se dibuja una flecha cada N celdas: con una por celda el terreno queda tapado por una
-  // alfombra de flechas y deja de leerse el agua.
+  // Una flecha cada N celdas: una por celda tapa el terreno.
   const salto = columnas > 10 ? 2 : 1;
 
   /** Las celdas que efectivamente muestran flecha, con su direccion y velocidad relativa. */
@@ -154,7 +258,6 @@ function FlechasEscurrimiento({
       for (let columna = 0; columna < columnas; columna += salto) {
         const [dc, df] = flujo[fila][columna];
         const magnitud = Math.hypot(dc, df);
-        // Solo donde hay escurrimiento apreciable y algo de agua que mover.
         if (magnitud / maxima < 0.15 || laminaGrid[fila][columna] < LAMINA_VISIBLE_MM) continue;
         items.push({ fila, columna, angulo: Math.atan2(dc, df), intensidad: magnitud / maxima });
       }
@@ -162,7 +265,6 @@ function FlechasEscurrimiento({
     return items;
   }, [flujo, laminaGrid, filas, columnas, salto]);
 
-  // Color por velocidad: celeste donde el agua apenas se mueve, azul intenso donde corre.
   useEffect(() => {
     if (!malla.current) return;
     corrientes.forEach((corriente, i) => {
@@ -172,10 +274,6 @@ function FlechasEscurrimiento({
     if (malla.current.instanceColor) malla.current.instanceColor.needsUpdate = true;
   }, [corrientes]);
 
-  /**
-   * Las flechas avanzan en su direccion y reaparecen atras, como el agua corriendo. Una flecha
-   * quieta no distingue "por aca escurre" de "aca hay una marca en el mapa"; el movimiento si.
-   */
   useFrame((estado) => {
     if (!malla.current) return;
     const auxiliar = new THREE.Object3D();
@@ -183,7 +281,6 @@ function FlechasEscurrimiento({
 
     corrientes.forEach((corriente, i) => {
       const { fila, columna, angulo, intensidad } = corriente;
-      // Avance ciclico: recorre poco menos de una celda y vuelve a empezar.
       const avance = ((t * (0.25 + intensidad * 0.5)) % 1) * (ANCHO_ESCENA / Math.max(columnas - 1, 1)) * salto;
       const base = alturaDe(fila, columna) + laminaGrid[fila][columna] * escala + 0.05;
 
@@ -220,24 +317,35 @@ function Agua({
   alturaDe: (fila: number, columna: number) => number;
   escala: number;
 }) {
+  const malla = useRef<THREE.Mesh>(null);
   const geometria = useMemo(() => new THREE.BufferGeometry(), []);
   const filas = laminaGrid.length;
   const columnas = laminaGrid[0]?.length ?? 0;
+  // Alturas base y mascara "esta mojado", para animar el oleaje sin recalcular toda la malla en cada frame.
+  const alturasBase = useRef<Float32Array>(new Float32Array(0));
+  const fasesOleaje = useRef<Float32Array>(new Float32Array(0));
+  const humedo = useRef<Uint8Array>(new Uint8Array(0));
 
   useEffect(() => {
     const posiciones: number[] = [];
     const colores: number[] = [];
     const indices: number[] = [];
     const laminaMaxima = Math.max(...laminaGrid.flat(), 1);
+    const base = new Float32Array(filas * columnas);
+    const fases = new Float32Array(filas * columnas);
+    const mojado = new Uint8Array(filas * columnas);
 
     for (let fila = 0; fila < filas; fila++) {
       for (let columna = 0; columna < columnas; columna++) {
         const lamina = laminaGrid[fila][columna];
-        // Donde no hay agua, la malla se hunde apenas por debajo del terreno y queda oculta.
+        const idx = fila * columnas + columna;
         const y =
           lamina >= LAMINA_VISIBLE_MM
             ? alturaDe(fila, columna) + lamina * escala
             : alturaDe(fila, columna) - 0.04;
+        base[idx] = y;
+        fases[idx] = aleatorio(idx) * Math.PI * 2;
+        mojado[idx] = lamina >= LAMINA_VISIBLE_MM ? 1 : 0;
         posiciones.push(posicionX(columna, columnas), y, posicionZ(fila, filas));
         const color = COLOR_AGUA_BAJA.clone().lerp(COLOR_AGUA_ALTA, Math.min(lamina / laminaMaxima, 1));
         colores.push(color.r, color.g, color.b);
@@ -250,129 +358,341 @@ function Agua({
       }
     }
 
+    alturasBase.current = base;
+    fasesOleaje.current = fases;
+    humedo.current = mojado;
+
     geometria.setAttribute("position", new THREE.Float32BufferAttribute(posiciones, 3));
     geometria.setAttribute("color", new THREE.Float32BufferAttribute(colores, 3));
     geometria.setIndex(indices);
     geometria.computeVertexNormals();
   }, [laminaGrid, alturaDe, escala, geometria, filas, columnas]);
 
+  // Oleaje sutil para que el agua no se vea como un plano pintado.
+  useFrame((estado) => {
+    if (!malla.current) return;
+    const atributo = malla.current.geometry.getAttribute("position") as THREE.BufferAttribute | undefined;
+    if (!atributo || alturasBase.current.length === 0) return;
+    const t = estado.clock.elapsedTime;
+    const array = atributo.array as Float32Array;
+    for (let i = 0; i < humedo.current.length; i++) {
+      if (!humedo.current[i]) continue;
+      array[i * 3 + 1] = alturasBase.current[i] + Math.sin(t * 1.6 + fasesOleaje.current[i]) * 0.012;
+    }
+    atributo.needsUpdate = true;
+  });
+
   return (
-    <mesh geometry={geometria}>
-      <meshStandardMaterial
-        vertexColors
-        transparent
-        opacity={0.78}
-        roughness={0.15}
-        metalness={0.25}
-        side={THREE.DoubleSide}
-      />
+    <mesh ref={malla} geometry={geometria}>
+      {/* Sin metalness/envMap: sin un environment que reflejar, un material metalico renderiza casi negro. */}
+      <meshStandardMaterial vertexColors transparent opacity={0.8} roughness={0.25} side={THREE.DoubleSide} />
     </mesh>
   );
 }
 
-function CamaraControlada({ vista }: { vista: VistaCamara }) {
-  const { camera } = useThree();
-  useEffect(() => {
-    camera.position.set(...vista.posicion);
-    camera.lookAt(0, 0, 0);
-  }, [vista, camera]);
-  return null;
+/** Altura del mastil de cada baliza de activo por encima del relieve. */
+const ALTURA_BALIZA = 0.85;
+
+/** Marcador de un activo (hacienda, maquinaria, instalaciones): mastil + baliza que pulsa. Color
+ * segun estado: verde a salvo, ambar se moja mas adelante, rojo ya bajo agua. */
+function BalizaActivo({
+  activo,
+  y,
+  x,
+  z,
+  seleccionado,
+  onSeleccionar,
+}: {
+  activo: ActivoMarcador;
+  y: number;
+  x: number;
+  z: number;
+  seleccionado: boolean;
+  onSeleccionar: () => void;
+}) {
+  const esfera = useRef<THREE.Mesh>(null);
+  const color = activo.inundadoAhora ? "#c23b28" : activo.seInundaEnEscenario ? "#c98a2e" : "#3f7a4a";
+
+  useFrame((estado) => {
+    if (!esfera.current) return;
+    const pulso = 1 + Math.sin(estado.clock.elapsedTime * 2.4) * (seleccionado ? 0.22 : 0.12);
+    esfera.current.scale.setScalar(pulso * (seleccionado ? 1.5 : 1));
+  });
+
+  return (
+    <group position={[x, y, z]}>
+      <mesh position={[0, ALTURA_BALIZA / 2, 0]}>
+        <cylinderGeometry args={[0.012, 0.012, ALTURA_BALIZA, 6]} />
+        <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.3} />
+      </mesh>
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.05, 0.075, 20]} />
+        <meshBasicMaterial color={color} transparent opacity={0.8} side={THREE.DoubleSide} />
+      </mesh>
+
+      {/* No agregar una esfera invisible extra "mas grande" solo para el click: el occlude del
+          <Html> de abajo raycastea contra toda la escena (Html.js de drei), y cualquier geometria
+          extra en este punto le tapa la etiqueta a si misma. */}
+      <mesh
+        ref={esfera}
+        position={[0, ALTURA_BALIZA, 0]}
+        onClick={(e: ThreeEvent<MouseEvent>) => {
+          e.stopPropagation();
+          onSeleccionar();
+        }}
+        onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+          e.stopPropagation();
+          document.body.style.cursor = "pointer";
+        }}
+        onPointerOut={() => {
+          document.body.style.cursor = "auto";
+        }}
+      >
+        <sphereGeometry args={[0.09, 14, 14]} />
+        <meshStandardMaterial
+          color={color}
+          emissive={color}
+          emissiveIntensity={activo.inundadoAhora ? 0.9 : 0.5}
+          toneMapped={false}
+        />
+      </mesh>
+
+      {/* Etiqueta con nombre, siempre visible. zIndexRange bajo: por defecto drei pone estos
+          overlays con un z-index ~16 millones, por encima de cualquier modal de la pagina. */}
+      <Html
+        distanceFactor={seleccionado ? 7 : 9}
+        position={[0, ALTURA_BALIZA + 0.14, 0]}
+        occlude
+        zIndexRange={[30, 0]}
+        style={{ transition: "opacity .15s" }}
+      >
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onSeleccionar();
+          }}
+          className={`cursor-pointer whitespace-nowrap rounded-full border px-2.5 py-1 text-[10px] font-medium shadow-sm transition-colors ${
+            seleccionado
+              ? "border-brand-500 bg-brand-100 text-brand-700"
+              : "border-paper-300 bg-paper-50/95 text-ink-800 hover:border-brand-500/60"
+          }`}
+        >
+          {activo.nombre}
+        </button>
+      </Html>
+    </group>
+  );
+}
+
+function MarcadoresActivos({
+  activos,
+  alturaDe,
+  filas,
+  columnas,
+  seleccionadoId,
+  onSeleccionar,
+}: {
+  activos: ActivoMarcador[];
+  alturaDe: (fila: number, columna: number) => number;
+  filas: number;
+  columnas: number;
+  seleccionadoId: string | null;
+  onSeleccionar: (id: string | null) => void;
+}) {
+  return (
+    <>
+      {activos.map((activo) => {
+        const y = alturaInterpolada(alturaDe, activo.fFila, activo.fColumna, filas, columnas);
+        const x = posicionX(activo.fColumna, columnas);
+        const z = posicionZ(activo.fFila, filas);
+        const seleccionado = seleccionadoId === activo.id;
+
+        return (
+          <BalizaActivo
+            key={activo.id}
+            activo={activo}
+            x={x}
+            y={y}
+            z={z}
+            seleccionado={seleccionado}
+            onSeleccionar={() => onSeleccionar(seleccionado ? null : activo.id)}
+          />
+        );
+      })}
+    </>
+  );
 }
 
 /**
- * Contorno real del lote sobre el terreno simulado.
- *
- * El dominio que se simula es mas grande que el campo -hace falta, porque el agua que lo anega
- * muchas veces baja de una ladera vecina- asi que sin esta linea el usuario estaria mirando un
- * rectangulo generico creyendo que es su campo.
- *
- * Se dibuja proyectando el POLIGONO real del lote, no la mascara rasterizada de la simulacion:
- * la mascara tiene la resolucion de la grilla de calculo (unas 10 celdas de lado sobre el lote),
- * asi que un lote irregular salia como una escalera gruesa que no se parecia a su forma. La
- * altura de cada vertice se interpola del terreno para que la linea siga el relieve en vez de
- * flotar o hundirse.
+ * Interpola la camara SOLO durante la transicion al cambiar de vista. Fuera de eso no la toca:
+ * si sigue corriendo mientras el usuario arrastra (OrbitControls), la tira de vuelta cada frame
+ * y girar se vuelve imposible.
  */
-function ContornoLote({
-  anillos,
+function CamaraControlada({ vista }: { vista: VistaCamara }) {
+  const { camera } = useThree();
+  const objetivo = useRef(new THREE.Vector3(...vista.posicion));
+  const transicionando = useRef(false);
+
+  useEffect(() => {
+    objetivo.current.set(...vista.posicion);
+    transicionando.current = true;
+  }, [vista]);
+
+  useFrame((_, delta) => {
+    if (!transicionando.current) return;
+    camera.position.lerp(objetivo.current, Math.min(delta * 4, 1));
+    camera.lookAt(0, 0, 0);
+    if (camera.position.distanceTo(objetivo.current) < 0.02) transicionando.current = false;
+  });
+
+  return null;
+}
+
+/** Altura del terreno (en unidades de escena) en una posicion continua de la grilla, por interpolacion bilineal. */
+function alturaContinua(
+  grid: number[][],
+  elevacionMinM: number,
+  metrosPorUnidad: number,
+  exageracion: number,
+  fLat: number,
+  fLon: number,
+): number {
+  const filas = grid.length;
+  const columnas = grid[0]?.length ?? 0;
+  const f = Math.min(Math.max(fLat * (filas - 1), 0), filas - 1);
+  const c = Math.min(Math.max(fLon * (columnas - 1), 0), columnas - 1);
+  const f0 = Math.floor(f);
+  const c0 = Math.floor(c);
+  const f1 = Math.min(f0 + 1, filas - 1);
+  const c1 = Math.min(c0 + 1, columnas - 1);
+  const tf = f - f0;
+  const tc = c - c0;
+  const cota =
+    grid[f0][c0] * (1 - tf) * (1 - tc) +
+    grid[f0][c1] * (1 - tf) * tc +
+    grid[f1][c0] * tf * (1 - tc) +
+    grid[f1][c1] * tf * tc;
+  return ((cota - elevacionMinM) / metrosPorUnidad) * exageracion;
+}
+
+/** Coordenada geografica proyectada a (x, z) de la escena, mas sus fracciones de fila/columna. */
+function proyectarCoordenada(coord: Coordenada, bounds: TerrenoBounds) {
+  const dLat = bounds.latMax - bounds.latMin || 1;
+  const dLon = bounds.lonMax - bounds.lonMin || 1;
+  const fLat = (coord.lat - bounds.latMin) / dLat;
+  const fLon = (coord.lon - bounds.lonMin) / dLon;
+  return { x: (fLon - 0.5) * ANCHO_ESCENA, z: (fLat - 0.5) * ANCHO_ESCENA, fLat, fLon };
+}
+
+/** Un lote: contorno punteado + relleno tenue con su forma real, clickeable para seleccionarlo. */
+function LoteInteractivo({
+  anillo,
   bounds,
   grid,
   elevacionMinM,
   metrosPorUnidad,
   exageracion,
+  seleccionado,
+  onClick,
 }: {
-  anillos: Coordenada[][];
+  anillo: Coordenada[];
   bounds: TerrenoBounds;
   grid: number[][];
   elevacionMinM: number;
   metrosPorUnidad: number;
   exageracion: number;
+  seleccionado: boolean;
+  onClick: () => void;
 }) {
-  const geometria = useMemo(() => {
-    const filas = grid.length;
-    const columnas = grid[0]?.length ?? 0;
-    const dLat = bounds.latMax - bounds.latMin || 1;
-    const dLon = bounds.lonMax - bounds.lonMin || 1;
+  const alturaEn = (fLat: number, fLon: number) =>
+    alturaContinua(grid, elevacionMinM, metrosPorUnidad, exageracion, fLat, fLon);
 
-    /** Altura del terreno en una posicion continua de la grilla, por interpolacion bilineal. */
-    const alturaEn = (fLat: number, fLon: number) => {
-      const f = Math.min(Math.max(fLat * (filas - 1), 0), filas - 1);
-      const c = Math.min(Math.max(fLon * (columnas - 1), 0), columnas - 1);
-      const f0 = Math.floor(f);
-      const c0 = Math.floor(c);
-      const f1 = Math.min(f0 + 1, filas - 1);
-      const c1 = Math.min(c0 + 1, columnas - 1);
-      const tf = f - f0;
-      const tc = c - c0;
-      const cota =
-        grid[f0][c0] * (1 - tf) * (1 - tc) +
-        grid[f0][c1] * (1 - tf) * tc +
-        grid[f1][c0] * tf * (1 - tc) +
-        grid[f1][c1] * tf * tc;
-      // Un pelo por encima de la superficie para que no quede enterrada en el mesh.
-      return ((cota - elevacionMinM) / metrosPorUnidad) * exageracion + 0.05;
-    };
-
+  const contorno = useMemo(() => {
+    if (anillo.length < 2) return null;
+    const puntos = anillo.map((c) => {
+      const { x, z, fLat, fLon } = proyectarCoordenada(c, bounds);
+      return [x, alturaEn(fLat, fLon) + 0.05, z] as [number, number, number];
+    });
+    const cerrado = [...puntos, puntos[0]];
     const vertices: number[] = [];
     const distancias: number[] = [];
-
-    for (const anillo of anillos) {
-      if (anillo.length < 2) continue;
-      const puntos = anillo.map((c) => {
-        const fLat = (c.lat - bounds.latMin) / dLat;
-        const fLon = (c.lon - bounds.lonMin) / dLon;
-        return [
-          (fLon - 0.5) * ANCHO_ESCENA,
-          alturaEn(fLat, fLon),
-          (fLat - 0.5) * ANCHO_ESCENA,
-        ] as [number, number, number];
-      });
-      // Se cierra el anillo si el ultimo vertice no repite el primero.
-      const cerrado = [...puntos, puntos[0]];
-      let recorrido = 0;
-      for (let i = 0; i < cerrado.length - 1; i++) {
-        const a = cerrado[i];
-        const b = cerrado[i + 1];
-        vertices.push(...a, ...b);
-        // lineDashedMaterial necesita la distancia acumulada, si no dibuja continuo. Se acumula
-        // a lo largo del anillo para que el patron de guiones no se reinicie en cada tramo.
-        const largo = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
-        distancias.push(recorrido, recorrido + largo);
-        recorrido += largo;
-      }
+    let recorrido = 0;
+    for (let i = 0; i < cerrado.length - 1; i++) {
+      const a = cerrado[i];
+      const b = cerrado[i + 1];
+      vertices.push(...a, ...b);
+      // lineDashedMaterial necesita lineDistance acumulada o dibuja continuo.
+      const largo = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+      distancias.push(recorrido, recorrido + largo);
+      recorrido += largo;
     }
-
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
     g.setAttribute("lineDistance", new THREE.Float32BufferAttribute(distancias, 1));
     return g;
-  }, [anillos, bounds, grid, elevacionMinM, metrosPorUnidad, exageracion]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- alturaEn ya depende solo de los deps listados
+  }, [anillo, bounds, grid, elevacionMinM, metrosPorUnidad, exageracion]);
+
+  const relleno = useMemo(() => {
+    if (anillo.length < 3) return null;
+    const puntos2D = anillo.map((c) => {
+      const { x, z } = proyectarCoordenada(c, bounds);
+      return new THREE.Vector2(x, z);
+    });
+    let caras: number[][];
+    try {
+      caras = THREE.ShapeUtils.triangulateShape(puntos2D, []);
+    } catch {
+      return null;
+    }
+    if (caras.length === 0) return null;
+
+    const posiciones: number[] = [];
+    for (const c of anillo) {
+      const { x, z, fLat, fLon } = proyectarCoordenada(c, bounds);
+      posiciones.push(x, alturaEn(fLat, fLon) + 0.03, z);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(posiciones, 3));
+    g.setIndex(caras.flat());
+    g.computeVertexNormals();
+    return g;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ver comentario en `contorno`
+  }, [anillo, bounds, grid, elevacionMinM, metrosPorUnidad, exageracion]);
 
   return (
-    <lineSegments geometry={geometria}>
-      {/* Con depthTest apagado la linea se veia atravesando el terreno, incluido el lado de
-          atras del lote: parecia ruido en vez de un contorno. */}
-      <lineDashedMaterial color="#fdf6e8" dashSize={0.16} gapSize={0.1} />
-    </lineSegments>
+    <>
+      {contorno && (
+        <lineSegments geometry={contorno}>
+          <lineDashedMaterial color={seleccionado ? "#ffb020" : "#fdf6e8"} dashSize={0.16} gapSize={0.1} />
+        </lineSegments>
+      )}
+      {relleno && (
+        <mesh
+          geometry={relleno}
+          onClick={(e: ThreeEvent<MouseEvent>) => {
+            e.stopPropagation();
+            onClick();
+          }}
+          onPointerOver={(e: ThreeEvent<PointerEvent>) => {
+            e.stopPropagation();
+            document.body.style.cursor = "pointer";
+          }}
+          onPointerOut={() => {
+            document.body.style.cursor = "auto";
+          }}
+        >
+          <meshBasicMaterial
+            color={seleccionado ? "#ffb020" : "#fdf6e8"}
+            transparent
+            opacity={seleccionado ? 0.16 : 0.05}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
+    </>
   );
 }
 
@@ -387,8 +707,13 @@ interface Props {
   /** Ancho real del dominio simulado en metros: fija la escala vertical verdadera del bloque. */
   anchoLoteM: number;
   exageracion: number;
-  /** Anillos reales de los lotes. Sin esto el bloque entero se leeria como el campo. */
-  contornos?: Coordenada[][];
+  /** Lotes reales del alcance. Sin esto el bloque entero se leeria como un solo campo generico. */
+  lotes?: { id: string; nombre: string; anillo: Coordenada[] }[];
+  loteSeleccionadoId?: string | null;
+  onSeleccionarLote?: (id: string | null) => void;
+  activos?: ActivoMarcador[];
+  activoSeleccionadoId?: string | null;
+  onSeleccionarActivo?: (id: string | null) => void;
 }
 
 export function EscenaSimulacion({
@@ -401,7 +726,12 @@ export function EscenaSimulacion({
   mostrarLluvia,
   anchoLoteM,
   exageracion,
-  contornos,
+  lotes,
+  loteSeleccionadoId,
+  onSeleccionarLote,
+  activos,
+  activoSeleccionadoId,
+  onSeleccionarActivo,
 }: Props) {
   const metrosPorUnidad = Math.max(anchoLoteM, 1) / ANCHO_ESCENA;
   const { superficie, bloque, alturaDe } = useMemo(
@@ -417,30 +747,64 @@ export function EscenaSimulacion({
   );
   const escala = escalaAgua(metrosPorUnidad, exageracion);
 
+  const intensidad = Math.min(paso.lluviaMmH / 25, 1);
+  const colorCielo = useMemo(() => CIELO_CALMO.clone().lerp(CIELO_TORMENTA, intensidad), [intensidad]);
+  const colorNiebla = useMemo(() => NIEBLA_CALMA.clone().lerp(NIEBLA_TORMENTA, intensidad), [intensidad]);
+  const intensidadLuz = 1.2 - intensidad * 0.3;
+
+  const filas = terreno.grid.length;
+  const columnas = terreno.grid[0]?.length ?? 0;
+
   return (
     <>
-      <ambientLight intensity={0.55} />
-      <hemisphereLight args={["#cfe3f2", "#5a4a35", 0.5]} />
-      <directionalLight position={[8, 12, 6]} intensity={1.15} castShadow />
-      <directionalLight position={[-7, 5, -8]} intensity={0.3} />
+      <color attach="background" args={[colorCielo]} />
+      <fog attach="fog" args={[colorNiebla, 20, 42]} />
+
+      <ambientLight intensity={0.75 - intensidad * 0.08} />
+      <hemisphereLight args={["#cfe3f2", "#5a4a35", 0.6 - intensidad * 0.08]} />
+      <directionalLight position={[8, 12, 6]} intensity={intensidadLuz} castShadow />
+      <directionalLight position={[-7, 5, -8]} intensity={0.35} />
+      {/* Relleno en las 4 caras del corte de suelo, direccional y no puntual: una pointLight
+          pegada a la pared genera un punto caliente por la caida inversa al cuadrado de la
+          distancia (todo blanco cerca de la luz, todo oscuro lejos), que tapaba las bandas de
+          estrato. Direccional ilumina parejo sin importar la distancia. */}
+      <directionalLight position={[0, 3, 9]} intensity={0.4} />
+      <directionalLight position={[0, 3, -9]} intensity={0.4} />
+      <directionalLight position={[9, 3, 0]} intensity={0.4} />
+      <directionalLight position={[-9, 3, 0]} intensity={0.4} />
 
       <mesh geometry={superficie} receiveShadow>
-        <meshStandardMaterial vertexColors roughness={0.92} />
+        <meshStandardMaterial vertexColors roughness={Math.max(0.92 - intensidad * 0.25, 0.55)} />
       </mesh>
       <mesh geometry={bloque}>
-        <meshStandardMaterial vertexColors roughness={1} />
+        <meshStandardMaterial vertexColors roughness={0.95} />
       </mesh>
-
       <Agua laminaGrid={paso.laminaGrid} alturaDe={alturaDe} escala={escala} />
 
-      {contornos && contornos.length > 0 && terreno.bounds && (
-        <ContornoLote
-          anillos={contornos}
-          bounds={terreno.bounds}
-          grid={terreno.grid}
-          elevacionMinM={terreno.elevacionMinM}
-          metrosPorUnidad={metrosPorUnidad}
-          exageracion={exageracion}
+      {lotes &&
+        terreno.bounds &&
+        lotes.map((lote) => (
+          <LoteInteractivo
+            key={lote.id}
+            anillo={lote.anillo}
+            bounds={terreno.bounds!}
+            grid={terreno.grid}
+            elevacionMinM={terreno.elevacionMinM}
+            metrosPorUnidad={metrosPorUnidad}
+            exageracion={exageracion}
+            seleccionado={loteSeleccionadoId === lote.id}
+            onClick={() => onSeleccionarLote?.(loteSeleccionadoId === lote.id ? null : lote.id)}
+          />
+        ))}
+
+      {activos && activos.length > 0 && (
+        <MarcadoresActivos
+          activos={activos}
+          alturaDe={alturaDe}
+          filas={filas}
+          columnas={columnas}
+          seleccionadoId={activoSeleccionadoId ?? null}
+          onSeleccionar={(id) => onSeleccionarActivo?.(id)}
         />
       )}
 
@@ -454,7 +818,14 @@ export function EscenaSimulacion({
       )}
 
       {mostrarLluvia && (
-        <Lluvia intensidadMmH={paso.lluviaMmH} vientoKmh={vientoKmh} direccionVientoDeg={direccionVientoDeg} />
+        <>
+          <Lluvia intensidadMmH={paso.lluviaMmH} vientoKmh={vientoKmh} direccionVientoDeg={direccionVientoDeg} />
+          <CielosDeTormenta
+            intensidadMmH={paso.lluviaMmH}
+            vientoKmh={vientoKmh}
+            direccionVientoDeg={direccionVientoDeg}
+          />
+        </>
       )}
 
       <CamaraControlada vista={vista} />

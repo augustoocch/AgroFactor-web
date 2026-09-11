@@ -43,12 +43,21 @@ export function Texto({
   placeholder?: string;
   tipo?: "text" | "number" | "date";
 }) {
+  // Ningun campo numerico de este formulario (valor, cantidad, año, altura) tiene sentido en
+  // negativo — se rechaza en el origen, no con un `min` decorativo que el backend igual va a
+  // rechazar despues de que el usuario ya completo todo el formulario.
+  const manejarCambio = (v: string) => {
+    if (tipo === "number" && v.includes("-")) return;
+    onChange(v);
+  };
+
   return (
     <Campo etiqueta={etiqueta} ayuda={ayuda}>
       <input
         type={tipo}
+        min={tipo === "number" ? 0 : undefined}
         value={valor}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => manejarCambio(e.target.value)}
         placeholder={placeholder}
         className={CLASES_CAMPO}
       />

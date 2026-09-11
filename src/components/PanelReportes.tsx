@@ -12,6 +12,7 @@ import type { InformeElegibilidad, Lote, Reporte } from "@/lib/types";
 const ETIQUETA_TIPO: Record<string, string> = {
   EMERGENCIA_AGROPECUARIA: "Emergencia agropecuaria",
   FICHA_ARRENDAMIENTO: "Ficha de arrendamiento",
+  IMPACTO_ECONOMICO: "Impacto económico",
 };
 
 export function PanelReportes({ establecimientoId, lotes }: { establecimientoId: string; lotes: Lote[] }) {

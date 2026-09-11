@@ -23,7 +23,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AgroRisk",
+  title: "AgroFactor",
   description: "Riesgo de anegamiento y plan de accion priorizado para establecimientos agropecuarios",
 };
 

@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import { revealVariants } from "@/lib/motion";
 import type { ParametrosSimulacion } from "@/components/SimulacionInundacion";
 import type {
+  Activo,
   CapaMeteorologica,
   Lote,
   MeteorologiaDistribuida,
@@ -52,12 +53,7 @@ export default function MeteorologiaPage({ params }: PageProps<"/establecimiento
 
   return (
     <div className="space-y-8">
-      {/* ---------------------------------------------------------------------------------
-          1. EL PRONOSTICO. Dia por dia, con el detalle tecnico de cada uno y donde se juntaria
-          el agua ese dia. Antes habia tres botones ("lo que cayo", "lo que se espera", "donde se
-          acumula") que agregaban toda la semana en un solo numero: no se podia saber que dia era
-          el problema, que es justo la decision que hay que tomar.
-          --------------------------------------------------------------------------------- */}
+      {/* Pronostico, dia por dia (no agregado en un solo numero de semana). */}
       <section className="space-y-4">
         <div>
           <p className="text-sm uppercase tracking-wide text-brand-600">Pronóstico</p>
@@ -81,11 +77,7 @@ export default function MeteorologiaPage({ params }: PageProps<"/establecimiento
         {observacion && <ResumenObservacion capa={observacion} />}
       </section>
 
-      {/* ---------------------------------------------------------------------------------
-          2. LA HIPOTESIS. Todo lo que responde "que pasaria si", separado del dato por una
-          linea y con sus propias perillas. Antes esto estaba mezclado con lo de arriba y el
-          control de lluvia no afectaba a dos de las tres capas: parecia roto.
-          --------------------------------------------------------------------------------- */}
+      {/* La hipotesis: "que pasaria si", separado del dato medido. */}
       <section className="space-y-4 border-t border-paper-300 pt-7">
         <SeccionSimulacion establecimientoId={id} lotes={lotes} />
       </section>
@@ -93,12 +85,7 @@ export default function MeteorologiaPage({ params }: PageProps<"/establecimiento
   );
 }
 
-/**
- * Lo que el satelite midio sobre el predio en las ultimas horas. Es observacion, no pronostico,
- * y se muestra como cifra y no como mapa: sobre un predio de pocos kilometros GOES resuelve un
- * punado de pixeles, asi que dibujar isobandas con eso seria pintar una forma que el dato no
- * tiene. La resolucion medida viaja al lado del numero.
- */
+/** Lluvia observada por satelite. Se muestra como cifra, no mapa: sobre un predio chico GOES solo resuelve un punado de pixeles. */
 function ResumenObservacion({ capa }: { capa: CapaMeteorologica }) {
   return (
     <div className="rounded-2xl border border-paper-300 bg-paper-50 p-4">
@@ -121,6 +108,14 @@ function SeccionSimulacion({ establecimientoId, lotes }: { establecimientoId: st
   const [parametros, setParametros] = useState<ParametrosSimulacion>(PARAMETROS_INICIALES);
   const [parametrosAplicados, setParametrosAplicados] = useState(PARAMETROS_INICIALES);
 
+  const { data: activos = [] } = useQuery({
+    queryKey: ["activos", establecimientoId],
+    queryFn: () => api.get<Activo[]>(`/establecimientos/${establecimientoId}/activos`),
+    enabled: activa,
+  });
+  const activosDelAlcance =
+    alcance === TODO_EL_PREDIO ? activos : activos.filter((a) => a.loteAsociadoId === alcance);
+
   useEffect(() => {
     const t = setTimeout(() => setParametrosAplicados(parametros), 350);
     return () => clearTimeout(t);
@@ -141,9 +136,7 @@ function SeccionSimulacion({ establecimientoId, lotes }: { establecimientoId: st
       if (alcance !== TODO_EL_PREDIO) q.set("loteId", alcance);
       return api.get<Simulacion>(`/establecimientos/${establecimientoId}/simulacion?${q}`);
     },
-    // Explicita, no automatica: la primera corrida de cada alcance consulta cientos de puntos de
-    // elevacion a un servicio gratuito cuya latencia es muy variable. Dispararla sola al entrar
-    // a la pestania hacia esperar un minuto a quien solo queria ver el pronostico.
+    // Explicita, no automatica: la primera corrida consulta elevacion y puede tardar hasta un minuto.
     enabled: activa,
     placeholderData: keepPreviousData,
     staleTime: 30 * 60 * 1000,
@@ -208,11 +201,11 @@ function SeccionSimulacion({ establecimientoId, lotes }: { establecimientoId: st
         <>
           <SimulacionInundacion
             simulacion={simulacion}
-            // El contorno sale del poligono real de cada lote simulado, no de la mascara de
-            // calculo: la mascara tiene la resolucion de la grilla y deforma la figura.
-            contornos={(alcance === TODO_EL_PREDIO ? lotes : lotes.filter((l) => l.id === alcance)).map(
-              (l) => l.anillo,
-            )}
+            // "Todo el predio": todos los lotes, clickeables para enfocar uno. Enfocado en uno: solo ese.
+            lotes={alcance === TODO_EL_PREDIO ? lotes : lotes.filter((l) => l.id === alcance)}
+            loteSeleccionadoId={alcance === TODO_EL_PREDIO ? null : alcance}
+            onSeleccionarLote={(id) => setAlcance(id ?? TODO_EL_PREDIO)}
+            activos={activosDelAlcance}
             parametros={parametros}
             recalculando={isFetching}
             onCambiar={setParametros}
@@ -243,9 +236,6 @@ function RankingZonas({
   return (
     <div className="space-y-2">
       <h3 className="font-display text-base font-medium text-ink-950">Lotes más expuestos</h3>
-      {/* Magnitud, extension y momento: lo que los asesores pidieron en vez de un semaforo.
-          Describe el escenario que se esta viendo arriba, no el pronostico: dos cifras distintas
-          en la misma pantalla se contradicen y no hay forma de saber cual mira uno. */}
       <p className="text-xs text-ink-600">
         Con los {lluviaMm} mm simulados: cuánta agua se acumula, sobre cuánta superficie, y en qué momento.
       </p>
