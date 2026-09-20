@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, Polygon, Popup, TileLayer, useMap } from "react-leaflet";
 import { ATRIBUCION_OSM, CLASES_CONTENEDOR_MAPA, URL_TILES_OSM, cargarGeoman, colorPorRiesgo } from "@/lib/mapa-utils";
+import { nivelRiesgo } from "@/lib/explicar-riesgo";
 import type { Activo, Coordenada, Lote, TipoActivo } from "@/lib/types";
 
 const ETIQUETA_TIPO_ACTIVO: Record<TipoActivo, string> = {
@@ -219,10 +220,14 @@ export function MapaEstablecimiento({
               <div className="space-y-1 text-sm">
                 <p className="font-medium text-ink-950">{lote.nombre}</p>
                 <p className="text-xs text-ink-600">
-                  {lote.tipoUso.toLowerCase()} · antecedentes: {lote.antecedentesAnegamientoUltimos10Anios ?? 0}/10 anios
+                  {lote.tipoUso.toLowerCase()} · se anegó {lote.antecedentesAnegamientoUltimos10Anios ?? 0} de los últimos 10 años
                 </p>
+                {/* La palabra y no el valor 0-1: el popup de Leaflet recorta lo que se sale de
+                    su caja, asi que aca va el dato pelado y la aclaracion vive en el detalle. */}
                 {scorePorLote?.[lote.id] !== undefined && (
-                  <p className="text-xs text-ink-600">Score de riesgo: {scorePorLote[lote.id].toFixed(2)}</p>
+                  <p className="text-xs font-medium" style={{ color: colorPorRiesgo(scorePorLote[lote.id]) }}>
+                    Riesgo {nivelRiesgo(scorePorLote[lote.id])}
+                  </p>
                 )}
                 <Link
                   href={`/establecimientos/${establecimientoId}/lotes/${lote.id}`}

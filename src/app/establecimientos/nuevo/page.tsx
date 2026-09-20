@@ -111,8 +111,8 @@ export default function NuevoEstablecimientoPage() {
             ))}
           </div>
           <p className="mt-2 text-xs text-ink-600">
-            Determina los pesos por defecto del plan de accion: los asesores relevados indicaron que la
-            prioridad de activos cambia segun este perfil.
+            Define con qué orden arranca el plan de acción. En un tambo pesan más los caminos; en
+            uno ganadero, la hacienda. Se puede cambiar después.
           </p>
         </div>
 

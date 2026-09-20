@@ -193,19 +193,14 @@ function FilaItemImpacto({
             {item.loteSinRegistroDeAgua && (
               <InfoModal titulo="El lote de esta fila no registró agua" etiqueta="sin agua registrada">
                 <p>
-                  Durante el evento, la simulación hidrológica no midió lámina de agua sobre el umbral de anegamiento
-                  en el lote del que sale esta fila, pero el daño de ese lote figura declarado.
+                  La simulación no encontró agua en ese lote durante el evento, pero la fila declara daño. Puede ser
+                  correcto: el desnivel de un lote pampeano es más chico de lo que el terreno del modelo distingue, y
+                  el agua que sube desde abajo no siempre deja lámina arriba.
                 </p>
                 <p>
-                  Esto no invalida la fila ni te la corrige. El porcentaje de afectación es una declaración jurada tuya
-                  (Ley 26.509) y puede haber razones válidas para declarar daño donde el modelo no vio agua: el DEM que
-                  usa la simulación tiene un error vertical mayor que el desnivel real de un lote de la Pampa Deprimida,
-                  y el anegamiento freático no siempre deja lámina en superficie.
-                </p>
-                <p>
-                  Se marca porque es lo primero que va a preguntar una aseguradora o la autoridad provincial al leer el
-                  informe, y conviene que lo veas ahora y no después. Si el daño es real, tené el respaldo a mano; si es
-                  un dato viejo, corregí el porcentaje en &quot;Declaración de daños&quot; y volvé a generar.
+                  Lo marcamos porque es lo primero que va a preguntar una aseguradora o la autoridad provincial. El
+                  porcentaje es una declaración jurada tuya (Ley 26.509): si el daño es real tené el respaldo a mano,
+                  y si quedó un dato viejo corregilo en &ldquo;Declaración de daños&rdquo; y volvé a generar.
                 </p>
               </InfoModal>
             )}

@@ -8,11 +8,13 @@ interface Props {
   abierto: boolean;
   onCerrar: () => void;
   titulo: string;
+  /** `lg` para formularios con varias columnas; `md` (por defecto) para el resto. */
+  ancho?: "md" | "lg";
   children: React.ReactNode;
 }
 
 /** Modal generico reutilizado tanto para formularios en contexto (dibujar lote/activo) como para contenido explicativo (InfoModal). */
-export function Modal({ abierto, onCerrar, titulo, children }: Props) {
+export function Modal({ abierto, onCerrar, titulo, ancho = "md", children }: Props) {
   useEffect(() => {
     if (!abierto) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -42,7 +44,7 @@ export function Modal({ abierto, onCerrar, titulo, children }: Props) {
             exit={{ opacity: 0, y: 8, scale: 0.98 }}
             transition={{ duration: 0.3, ease: easeOutExpo }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-2xl border border-paper-300 bg-paper-50 p-6 shadow-xl"
+            className={`w-full ${ancho === "lg" ? "max-w-2xl" : "max-w-md"} max-h-[85vh] overflow-y-auto rounded-2xl border border-paper-300 bg-paper-50 p-6 shadow-xl`}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2 id="modal-titulo" className="font-display text-lg font-medium text-ink-950">

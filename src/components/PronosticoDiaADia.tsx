@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import { useState } from "react";
+import { InfoModal } from "@/components/InfoModal";
 import { api } from "@/lib/api";
 import type { DiaAnalizado, Lote, PronosticoDiaADia as Datos } from "@/lib/types";
 
@@ -74,10 +75,24 @@ function Dato({ etiqueta, valor, resaltado }: { etiqueta: string; valor: string;
   );
 }
 
-function Celda({ etiqueta, valor, unidad }: { etiqueta: string; valor: string | number | null; unidad?: string }) {
+function Celda({
+  etiqueta,
+  valor,
+  unidad,
+  ayuda,
+}: {
+  etiqueta: string;
+  valor: string | number | null;
+  unidad?: string;
+  /** Explicacion opcional detras de un boton "i", para los valores que no se explican solos. */
+  ayuda?: React.ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-paper-300 bg-paper-50 px-2.5 py-1.5">
-      <p className="text-[10px] uppercase tracking-wide text-ink-600">{etiqueta}</p>
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] uppercase tracking-wide text-ink-600">{etiqueta}</span>
+        {ayuda}
+      </div>
       <p className="font-mono text-sm text-ink-950">
         {valor ?? "—"}
         {valor !== null && unidad ? <span className="text-[11px] text-ink-600">{unidad}</span> : null}
@@ -136,8 +151,8 @@ export function PronosticoDiaADia({ loteId, establecimientoId, lotes, dias = 7 }
   return (
     <div className="space-y-3">
       {/* Cada valor va con su etiqueta. Antes decia "0.0 mm / 0% · I / sin agua": el numero
-          romano es la condicion de humedad antecedente del metodo SCS-CN y no lo entendia nadie,
-          y "sin agua" no aclaraba si faltaba el dato o si el resultado era que no se acumulaba. */}
+          romano no lo entendia nadie, y "sin agua" no aclaraba si faltaba el dato o si el
+          resultado era que no se acumulaba. */}
       <p className="text-xs text-ink-600">
         Para cada dia: la lluvia esperada, con que humedad llega el suelo, y cuanta agua quedaria en superficie.
         Cuando no queda agua, el mapa no dibuja manchas.
@@ -187,7 +202,25 @@ export function PronosticoDiaADia({ loteId, establecimientoId, lotes, dias = 7 }
 
         <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
           <Celda etiqueta="Lluvia" valor={dia.precipitacionMm.toFixed(1)} unidad=" mm" />
-          <Celda etiqueta="Probabilidad" valor={dia.probabilidadLluviaPct?.toFixed(0) ?? null} unidad="%" />
+          <Celda
+            etiqueta="Probabilidad"
+            valor={dia.probabilidadLluviaPct?.toFixed(0) ?? null}
+            unidad="%"
+            ayuda={
+              <InfoModal titulo="Qué significa esta probabilidad">
+                <p>
+                  Es el pico de <strong>una hora</strong>, no la chance del día entero.
+                </p>
+                <p>
+                  Por eso un día puede tener más probabilidad y menos lluvia: tiene una hora con
+                  algo de chance, pero el modelo no llega a producir agua en ninguna.
+                </p>
+                <p className="text-ink-600">
+                  Para decidir, mirá los milímetros. Esto dice cuánta confianza tenerles.
+                </p>
+              </InfoModal>
+            }
+          />
           <Celda etiqueta="Temp max / min" valor={`${dia.tempMaxC?.toFixed(0) ?? "—"}/${dia.tempMinC?.toFixed(0) ?? "—"}`} unidad="°C" />
           <Celda etiqueta="Humedad" valor={dia.humedadMediaPct?.toFixed(0) ?? null} unidad="%" />
           <Celda etiqueta="Viento / rafaga" valor={`${dia.vientoMaxKmh?.toFixed(0) ?? "—"}/${dia.vientoRafagaKmh?.toFixed(0) ?? "—"}`} unidad=" km/h" />
@@ -200,7 +233,6 @@ export function PronosticoDiaADia({ loteId, establecimientoId, lotes, dias = 7 }
             etiqueta="Suelo al llegar"
             valor={SUELO_EN_PALABRAS[dia.condicionHumedadAntecedente] ?? dia.condicionHumedadAntecedente}
           />
-          <Celda etiqueta="Numero de curva" valor={dia.curvaNumeroAjustada.toFixed(0)} />
           <Celda etiqueta="Lamina maxima" valor={(dia.laminaMaximaMm / 10).toFixed(1)} unidad=" cm" />
           <Celda etiqueta="Superficie anegada" valor={dia.superficieAnegadaPct.toFixed(0)} unidad="%" />
           <Celda etiqueta="Pico" valor={dia.laminaMaximaMm > 0 ? `${dia.horaPico}` : null} unidad=" h" />
@@ -226,7 +258,7 @@ export function PronosticoDiaADia({ loteId, establecimientoId, lotes, dias = 7 }
           <p className="text-xs text-ink-600">
             {dia.precipitacionMm === 0
               ? "Sin lluvia pronosticada para este dia: no hay acumulacion que mapear."
-              : `Los ${dia.precipitacionMm.toFixed(1)} mm de este dia infiltran sin dejar agua en superficie (numero de curva ${dia.curvaNumeroAjustada.toFixed(0)}, humedad antecedente ${dia.condicionHumedadAntecedente}).`}
+              : `El suelo llega ${SUELO_EN_PALABRAS[dia.condicionHumedadAntecedente] ?? "sin saturar"} y absorbe los ${dia.precipitacionMm.toFixed(1)} mm de este dia: no queda agua en superficie.`}
           </p>
         )}
       </div>

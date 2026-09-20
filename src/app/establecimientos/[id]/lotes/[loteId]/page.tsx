@@ -10,28 +10,27 @@ import { ConfirmarBorrado } from "@/components/ConfirmarBorrado";
 import { ContextoEnsoChip } from "@/components/ContextoEnsoChip";
 import { ListaActivos } from "@/components/ListaActivos";
 import { ListaCultivos } from "@/components/ListaCultivos";
+import { PanelZonasSuelo } from "@/components/PanelZonasSuelo";
 import { PronosticoDiaADia } from "@/components/PronosticoDiaADia";
 import { RiesgoChip } from "@/components/RiesgoChip";
+import { Tooltip } from "@/components/Tooltip";
 import { InfoAside } from "@/components/InfoAside";
 import { api, clasificarError } from "@/lib/api";
 import { guardarGeometriaPendiente } from "@/lib/geometria-pendiente";
+import { explicarFactores } from "@/lib/explicar-riesgo";
 import { useReubicarActivo } from "@/lib/hooks";
 import { useToast } from "@/lib/toast-context";
 import { revealVariants } from "@/lib/motion";
 import type {
   Activo,
+  Coordenada,
   CultivoImplantado,
   EvaluacionRiesgo,
   Lote,
+  ZonaSuelo,
 } from "@/lib/types";
 
 const MapaLote = dynamic(() => import("@/components/MapaLote").then((m) => m.MapaLote), { ssr: false });
-
-const FASE_ENSO_LEGIBLE: Record<"EL_NINO" | "LA_NINA" | "NEUTRAL", string> = {
-  EL_NINO: "El Niño (fase históricamente más lluviosa en la región)",
-  LA_NINA: "La Niña (fase históricamente más seca en la región)",
-  NEUTRAL: "neutral",
-};
 
 export default function LoteDetallePage({ params }: PageProps<"/establecimientos/[id]/lotes/[loteId]">) {
   const { id, loteId } = use(params);
@@ -40,6 +39,11 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
   const queryClient = useQueryClient();
   const { notificar } = useToast();
   const [confirmandoBorrado, setConfirmandoBorrado] = useState(false);
+  // El sector de suelo se dibuja en el mapa y se completa en el panel de abajo, sin cambiar de
+  // pantalla: a diferencia de un cultivo o un activo, el dato que sigue son cuatro numeros y
+  // mandar al usuario a otra ruta por eso le costaria el contexto del mapa.
+  const [anilloSueloPendiente, setAnilloSueloPendiente] = useState<Coordenada[] | null>(null);
+  const [dibujandoSuelo, setDibujandoSuelo] = useState(false);
 
   const { data: lote } = useQuery({
     queryKey: ["lote", loteId],
@@ -54,6 +58,13 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
   const { data: activos = [] } = useQuery({
     queryKey: ["activos", "lote", loteId],
     queryFn: () => api.get<Activo[]>(`/lotes/${loteId}/activos`),
+  });
+
+  // Para dibujarlos sobre el mapa. El panel de abajo los pide por su cuenta con la misma clave,
+  // asi que react-query sirve una sola consulta para los dos.
+  const { data: zonasSuelo = [] } = useQuery({
+    queryKey: ["zonas-suelo", loteId],
+    queryFn: () => api.get<ZonaSuelo[]>(`/lotes/${loteId}/zonas-suelo`),
   });
 
   // Solo para poder mover un activo movible a otro lote desde la edicion.
@@ -99,7 +110,7 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
           </Link>
           <h1 className="font-display text-2xl font-medium text-ink-950">{lote.nombre}</h1>
           <p className="text-sm text-ink-600">
-            {lote.tipoUso.toLowerCase()} · antecedentes: {lote.antecedentesAnegamientoUltimos10Anios ?? 0}/10 anios
+            {lote.tipoUso.toLowerCase()} · se anegó {lote.antecedentesAnegamientoUltimos10Anios ?? 0} de los últimos 10 años
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -107,31 +118,17 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
             <>
               <RiesgoChip score={evaluacion.scoreSusceptibilidad} />
               {evaluacion.factores.faseEnso && <ContextoEnsoChip fase={evaluacion.factores.faseEnso} />}
-              <InfoAside titulo="Como se calcula este score" etiqueta="Ver desglose completo">
-                <ul className="list-disc space-y-1 pl-4">
-                  <li>Elevacion relativa: {evaluacion.factores.elevacionPercentil.toFixed(2)}</li>
-                  <li>Antecedentes historicos: {evaluacion.factores.antecedentesHistoricos.toFixed(2)}</li>
-                  <li>Tipo de suelo: {evaluacion.factores.tipoSueloScore.toFixed(2)}</li>
-                  <li>Precipitacion reciente real (NASA POWER): {evaluacion.factores.precipitacionRecienteMm.toFixed(0)} mm</li>
-                  <li>Precipitacion pronosticada real (Open-Meteo): {evaluacion.factores.precipitacionPronosticadaMm.toFixed(0)} mm</li>
-                  {evaluacion.factores.faseEnso && (
-                    <li>
-                      Contexto estacional (ENSO, NOAA CPC): {FASE_ENSO_LEGIBLE[evaluacion.factores.faseEnso]}
-                      {evaluacion.factores.moduladorEnso != null && ` (modulador ${evaluacion.factores.moduladorEnso.toFixed(2)})`}
-                    </li>
-                  )}
-                  {evaluacion.factores.saturacionRegionalProxy != null && (
-                    <li>
-                      Saturación regional de la cuenca (proxy de lluvia acumulada 12 meses, no es napa medida): {(evaluacion.factores.saturacionRegionalProxy * 100).toFixed(0)}%
-                    </li>
-                  )}
-                  {evaluacion.factores.probabilidadEventoExtremoPct != null && (
-                    <li>
-                      Probabilidad de evento extremo (ensemble de 30 corridas, Open-Meteo): {evaluacion.factores.probabilidadEventoExtremoPct.toFixed(0)}%
-                    </li>
-                  )}
-                </ul>
-                <p className="text-xs text-ink-600">Fuente: {evaluacion.fuenteDatos}.</p>
+              <InfoAside titulo="Por qué este lote tiene este riesgo" etiqueta="Ver por qué">
+                <dl className="space-y-3.5">
+                  {explicarFactores(evaluacion.factores, lote.antecedentesAnegamientoUltimos10Anios).map((f) => (
+                    <div key={f.etiqueta}>
+                      <dt className="text-xs uppercase tracking-wide text-ink-600">
+                        <Tooltip texto={f.ayuda}>{f.etiqueta}</Tooltip>
+                      </dt>
+                      <dd className="mt-0.5 text-sm text-ink-900">{f.lectura}</dd>
+                    </div>
+                  ))}
+                </dl>
               </InfoAside>
             </>
           ) : (
@@ -170,6 +167,22 @@ export default function LoteDetallePage({ params }: PageProps<"/establecimientos
         onEditarActivo={(activo) => router.push(`/establecimientos/${id}/lotes/${loteId}/activos/${activo.id}`)}
         onActivoMovido={(activo, coordenada) => reubicarActivo.mutate({ activo, coordenada })}
         autoDibujar={autoDibujar}
+        zonasSuelo={zonasSuelo}
+        autoDibujarSuelo={dibujandoSuelo}
+        onZonaSueloDibujada={(anillo) => {
+          setDibujandoSuelo(false);
+          setAnilloSueloPendiente(anillo);
+        }}
+        // El dibujo queda en pantalla y editable: el usuario corrige los vertices que se pasaron
+        // en vez de volver a trazar todo desde cero.
+        onRechazo={(motivo) => notificar("error-validacion", motivo)}
+      />
+
+      <PanelZonasSuelo
+        loteId={loteId}
+        anilloPendiente={anilloSueloPendiente}
+        onAnilloConsumido={() => setAnilloSueloPendiente(null)}
+        onPedirDibujo={() => setDibujandoSuelo(true)}
       />
 
       <div className="grid gap-5 lg:grid-cols-2">

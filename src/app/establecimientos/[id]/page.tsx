@@ -8,7 +8,6 @@ import { use, useState } from "react";
 import { ConfirmarBorrado } from "@/components/ConfirmarBorrado";
 import { EstadoNoEncontrado } from "@/components/EstadoNoEncontrado";
 import { NuevoLoteForm } from "@/components/NuevoLoteForm";
-import { PesosPrioridadCard } from "@/components/PesosPrioridadCard";
 import { api, clasificarError } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
 import { useReubicarActivo, useScoresRiesgo } from "@/lib/hooks";
@@ -86,8 +85,6 @@ export default function ResumenEstablecimientoPage({ params }: PageProps<"/estab
           lote, desde la pestania <span className="font-medium">Lotes</span>.
         </p>
       </motion.div>
-
-      <PesosPrioridadCard establecimiento={establecimiento} />
 
       <div className="flex justify-end border-t border-paper-300 pt-4">
         <button

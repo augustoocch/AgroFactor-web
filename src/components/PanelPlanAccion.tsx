@@ -6,30 +6,34 @@ import { api, clasificarError } from "@/lib/api";
 import { easeOutExpo } from "@/lib/motion";
 import { useToast } from "@/lib/toast-context";
 import { InfoModal } from "@/components/InfoModal";
-import type { PlanAccion } from "@/lib/types";
+import { Tooltip } from "@/components/Tooltip";
+import { desglosarCriterios, explicarPosicion } from "@/lib/explicar-prioridad";
+import type { AccionRecomendada, Establecimiento, PlanAccion } from "@/lib/types";
 
-const CRITERIOS: { key: "aporteImpacto" | "aporteUrgencia" | "aporteRecursos" | "aporteReversibilidad"; label: string; color: string }[] = [
-  { key: "aporteImpacto", label: "Impacto", color: "var(--color-brand-600)" },
-  { key: "aporteUrgencia", label: "Urgencia", color: "var(--color-risk-alto)" },
-  { key: "aporteRecursos", label: "Recursos", color: "var(--color-clay-500)" },
-  { key: "aporteReversibilidad", label: "Reversibilidad", color: "var(--color-risk-medio)" },
-];
-
-function BarraCriterio({ label, valor, color, delay }: { label: string; valor: number; color: string; delay: number }) {
+/**
+ * El desglose criterio por criterio, plegado.
+ *
+ * El titulo dice lo que el usuario se pregunta al ver la lista ("por que este activo esta aca")
+ * y no como esta hecho el calculo por dentro. Cada criterio lleva su aclaracion en el hover, asi
+ * que el bloque no necesita ningun parrafo al pie.
+ */
+function ComoSeCalculo({ item }: { item: AccionRecomendada }) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="w-24 shrink-0 text-xs text-ink-600">{label}</span>
-      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-paper-200">
-        <motion.div
-          className="h-full rounded-full"
-          style={{ backgroundColor: color }}
-          initial={{ width: 0 }}
-          animate={{ width: `${Math.min(valor, 1) * 100}%` }}
-          transition={{ duration: 0.7, delay, ease: easeOutExpo }}
-        />
-      </div>
-      <span className="w-9 shrink-0 text-right font-mono text-xs text-ink-600">{valor.toFixed(2)}</span>
-    </div>
+    <details className="mt-3 group">
+      <summary className="cursor-pointer list-none text-xs text-brand-700 underline underline-offset-2">
+        Por qué está en este lugar
+      </summary>
+      <dl className="mt-2 space-y-1 border-l-2 border-paper-300 pl-3">
+        {desglosarCriterios(item.justificacion, item.movilidad).map((d) => (
+          <div key={d.criterio} className="flex flex-wrap gap-x-2 text-xs">
+            <dt className="text-ink-600">
+              <Tooltip texto={d.ayuda}>{d.criterio}</Tooltip>
+            </dt>
+            <dd className="text-ink-800">{d.lectura}</dd>
+          </div>
+        ))}
+      </dl>
+    </details>
   );
 }
 
@@ -37,6 +41,12 @@ function BarraCriterio({ label, valor, color, delay }: { label: string; valor: n
 export function PanelPlanAccion({ establecimientoId }: { establecimientoId: string }) {
   const queryClient = useQueryClient();
   const { notificar } = useToast();
+
+  // Los pesos deciden que criterio se nombra primero en la explicacion de cada activo.
+  const { data: establecimiento } = useQuery({
+    queryKey: ["establecimiento", establecimientoId],
+    queryFn: () => api.get<Establecimiento>(`/establecimientos/${establecimientoId}`),
+  });
 
   const { data: plan } = useQuery({
     queryKey: ["plan-accion", establecimientoId],
@@ -61,17 +71,13 @@ export function PanelPlanAccion({ establecimientoId }: { establecimientoId: stri
         <div>
           <div className="flex items-center gap-1.5">
             <p className="text-sm uppercase tracking-wide text-brand-600">Qué atender primero</p>
-            <InfoModal titulo="Por qué este plan no es una prescripción">
+            <InfoModal titulo="Cómo leer esta lista">
               <p>
-                El sistema no dice &ldquo;haga esto&rdquo;: ordena los activos por un puntaje calculado con reglas visibles
-                (impacto económico, urgencia por riesgo del lote, recursos necesarios para movilizarlo y
-                reversibilidad del daño) y muestra el aporte de cada criterio para cada activo.
+                La lista es una sugerencia de por dónde empezar, no una indicación de qué hacer. Ordena tus activos
+                mirando cuánto valen, qué tan expuesto está el lote de cada uno, cuánto cuesta moverlos y cuánto se
+                recupera si el agua los alcanza.
               </p>
-              <p>
-                Es una decisión deliberada: un sistema que prescribe acciones de manejo agropecuario puede quedar
-                encuadrado como asesoramiento profesional matriculado, y la decisión final —con el contexto local
-                que el sistema no ve— siempre queda en el productor o el asesor.
-              </p>
+              <p>La decisión es tuya: vos conocés el campo y el momento, el sistema no.</p>
             </InfoModal>
           </div>
           <h2 className="font-display text-lg font-medium text-ink-950">Plan de acción priorizado</h2>
@@ -110,6 +116,9 @@ export function PanelPlanAccion({ establecimientoId }: { establecimientoId: stri
           >
             {plan.items.map((item) => {
               const esPrincipal = item.orden === 1;
+              const explicacion = establecimiento
+                ? explicarPosicion(item, establecimiento.pesosPrioridad)
+                : null;
               return (
                 <motion.li
                   key={item.activoId}
@@ -135,20 +144,17 @@ export function PanelPlanAccion({ establecimientoId }: { establecimientoId: stri
                         {item.activoNombre}
                       </span>
                     </div>
-                    <span className="font-mono text-sm text-ink-600">{item.scorePrioridad.toFixed(2)}</span>
+                    {/* La plata en riesgo reemplaza al score 0-1, que solo servia para ordenar y
+                        no significa nada en terminos absolutos. */}
+                    {item.valorEnRiesgo != null && (
+                      <span className={esPrincipal ? "text-sm font-medium text-clay-600" : "text-sm text-ink-700"}>
+                        USD {Math.round(item.valorEnRiesgo).toLocaleString("es-AR")} en riesgo
+                      </span>
+                    )}
                   </div>
-                  <p className="mt-2.5 text-sm text-ink-800">{item.recomendacion}</p>
-                  <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
-                    {CRITERIOS.map((c, i) => (
-                      <BarraCriterio
-                        key={c.key}
-                        label={c.label}
-                        valor={item.justificacion[c.key]}
-                        color={c.color}
-                        delay={0.15 + i * 0.05}
-                      />
-                    ))}
-                  </div>
+                  {explicacion && <p className="mt-2 text-sm text-ink-700">{explicacion}</p>}
+                  <p className="mt-2.5 text-sm font-medium text-ink-900">{item.recomendacion}</p>
+                  <ComoSeCalculo item={item} />
                 </motion.li>
               );
             })}

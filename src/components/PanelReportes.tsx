@@ -6,16 +6,15 @@ import { useState } from "react";
 import { api, clasificarError, descargarArchivo } from "@/lib/api";
 import { easeOutExpo } from "@/lib/motion";
 import { useToast } from "@/lib/toast-context";
-import type { InformeElegibilidad, Lote, Reporte } from "@/lib/types";
+import type { InformeElegibilidad, Reporte } from "@/lib/types";
 
-/** Los dos reportes institucionales que reutilizan el motor de riesgo/priorizacion ya calculado (caso Aguirre y caso Ortiz). */
+/** Los reportes institucionales que reutilizan el motor de riesgo/priorizacion ya calculado (caso Aguirre). */
 const ETIQUETA_TIPO: Record<string, string> = {
   EMERGENCIA_AGROPECUARIA: "Emergencia agropecuaria",
-  FICHA_ARRENDAMIENTO: "Ficha de arrendamiento",
   IMPACTO_ECONOMICO: "Impacto económico",
 };
 
-export function PanelReportes({ establecimientoId, lotes }: { establecimientoId: string; lotes: Lote[] }) {
+export function PanelReportes({ establecimientoId }: { establecimientoId: string }) {
   const { notificar } = useToast();
   const queryClient = useQueryClient();
 
@@ -27,7 +26,6 @@ export function PanelReportes({ establecimientoId, lotes }: { establecimientoId:
     queryKey: ["reportes", establecimientoId, "elegibilidad"],
     queryFn: () => api.get<InformeElegibilidad>(`/establecimientos/${establecimientoId}/reportes/emergencia-agropecuaria/elegibilidad`),
   });
-  const [loteIds, setLoteIds] = useState<string[]>([]);
   const [ultimoReporte, setUltimoReporte] = useState<Reporte | null>(null);
 
   const descargar = async (reporte: Reporte) => {
@@ -56,33 +54,16 @@ export function PanelReportes({ establecimientoId, lotes }: { establecimientoId:
     },
   });
 
-  const arrendamiento = useMutation({
-    mutationFn: () => api.post<Reporte>(`/establecimientos/${establecimientoId}/reportes/ficha-arrendamiento`, { loteIds }),
-    onSuccess: (reporte) => {
-      setUltimoReporte(reporte);
-      queryClient.invalidateQueries({ queryKey: ["reportes", establecimientoId] });
-      void descargar(reporte);
-    },
-    onError: (e) => {
-      const { tipo, mensaje } = clasificarError(e);
-      notificar(tipo, mensaje, tipo === "error-servicio" ? () => arrendamiento.mutate() : undefined);
-    },
-  });
-
-  const toggleLote = (id: string) => {
-    setLoteIds((prev) => (prev.includes(id) ? prev.filter((l) => l !== id) : [...prev, id]));
-  };
-
   return (
     <div className="rounded-2xl border border-paper-300 bg-paper-50 p-6">
       <p className="text-sm uppercase tracking-wide text-brand-600">Documentos</p>
       <h2 className="font-display text-lg font-medium text-ink-950">Reportes</h2>
       <p className="mt-1 max-w-2xl text-sm text-ink-600">
         Documentos en PDF armados con el analisis que el sistema ya tiene de tu campo, para presentar ante un
-        tercero: un organismo, una aseguradora o quien te arrienda.
+        tercero: un organismo o una aseguradora.
       </p>
 
-      <div className="mt-5 grid gap-4 md:grid-cols-2">
+      <div className="mt-5 grid gap-4">
         <div className="space-y-2.5 rounded-xl border border-paper-300 bg-paper-100/50 p-4">
           <p className="text-sm font-medium text-ink-900">Emergencia agropecuaria</p>
           <p className="text-xs text-ink-600">
@@ -101,35 +82,6 @@ export function PanelReportes({ establecimientoId, lotes }: { establecimientoId:
             className="rounded-full border border-brand-500 px-3.5 py-1.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-100 disabled:opacity-50"
           >
             Generar informe
-          </button>
-        </div>
-
-        <div className="space-y-2.5 rounded-xl border border-paper-300 bg-paper-100/50 p-4">
-          <p className="text-sm font-medium text-ink-900">Ficha de arrendamiento</p>
-          <p className="text-xs text-ink-600">Elegi 2 o mas lotes para comparar su anegabilidad antes de arrendar.</p>
-          <div className="flex flex-wrap gap-1.5">
-            {lotes.map((l) => {
-              const activo = loteIds.includes(l.id);
-              return (
-                <button
-                  type="button"
-                  key={l.id}
-                  onClick={() => toggleLote(l.id)}
-                  className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${
-                    activo ? "border-brand-500 bg-brand-100 text-brand-700" : "border-paper-300 text-ink-600"
-                  }`}
-                >
-                  {l.nombre}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            onClick={() => arrendamiento.mutate()}
-            disabled={arrendamiento.isPending || loteIds.length < 2}
-            className="rounded-full border border-brand-500 px-3.5 py-1.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-100 disabled:opacity-50"
-          >
-            Generar ficha
           </button>
         </div>
       </div>

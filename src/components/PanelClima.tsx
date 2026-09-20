@@ -5,11 +5,12 @@ import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { easeOutExpo } from "@/lib/motion";
 import { InfoModal } from "@/components/InfoModal";
+import { Tooltip } from "@/components/Tooltip";
 import { ClimaEscena } from "@/components/ClimaEscena";
 import type { CondicionClimatica, Pronostico, PronosticoDiario } from "@/lib/types";
 
-// Mismos umbrales que risk-engine/app/riesgo.py: no son decorativos, son los que efectivamente
-// se usan para calcular aporteUrgencia. Mostrarlos acá cierra el circulo "esto no es solo un numero".
+// Mismos umbrales que usa el calculo de riesgo: no son decorativos. En pantalla no se nombran
+// como "umbrales del score" sino por lo que significan, que es lo unico accionable para el usuario.
 const UMBRAL_SATURACION_90D_MM = 300;
 const UMBRAL_EVENTO_7D_MM = 100;
 
@@ -112,19 +113,14 @@ export function PanelClima({ loteReferenciaId }: { loteReferenciaId: string }) {
       <div className="relative isolate overflow-hidden rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-700 to-brand-900 p-5 text-paper-50">
         {actual && <ClimaEscena condicion={actual.condicion} />}
         <div className="relative flex items-center gap-1.5">
-          <p className="text-sm uppercase tracking-wide text-brand-200">Open-Meteo · NASA POWER</p>
-          <InfoModal titulo="De dónde sale este número">
+          <p className="text-sm uppercase tracking-wide text-brand-200">El tiempo sobre el campo</p>
+          <InfoModal titulo="Qué muestra este panel">
             <p>
-              <strong>Últimos 90 días</strong>: precipitación real medida por satélite/reanálisis (NASA POWER). Si
-              supera los 300mm, la napa freática de la Cuenca del Salado suele estar cerca de saturación.
+              Lo que ya llovió sobre el campo en los últimos 90 días y lo que se espera para la semana que viene.
             </p>
             <p>
-              <strong>Próximos 7 días</strong>: pronóstico real (Open-Meteo). Si supera los 100mm es un evento de
-              lluvia extraordinaria — sube directamente la urgencia del plan de acción.
-            </p>
-            <p className="text-xs text-ink-600">
-              Los &quot;impactos&quot; por día son heurísticas agronómicas basadas en umbrales de buenas prácticas
-              (deriva, helada, enfermedades fungosas) — no un pronóstico certero de ninguna de esas condiciones.
+              Los avisos de cada día (deriva, helada, riesgo de enfermedad) marcan condiciones a tener en cuenta, no
+              anuncian que vayan a pasar.
             </p>
           </InfoModal>
         </div>
@@ -159,18 +155,22 @@ export function PanelClima({ loteReferenciaId }: { loteReferenciaId: string }) {
 
       {pronostico && (
         <div className="rounded-2xl border border-paper-300 bg-paper-50 p-4">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-600">Umbrales que usa el score</p>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-600">Cuánta agua viene acumulando el campo</p>
           <div className="space-y-3">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-ink-700">
-                <span>Últimos 90 días</span>
+                <Tooltip texto="Pasados los 300 mm, el suelo de la zona suele estar cerca de saturarse y absorbe mucho menos.">
+                  <span>Últimos 90 días</span>
+                </Tooltip>
                 <span className="font-mono">{pronostico.precipitacionUltimos90DiasMm.toFixed(0)} / {UMBRAL_SATURACION_90D_MM} mm</span>
               </div>
               <BarraProgreso valor={pronostico.precipitacionUltimos90DiasMm} umbral={UMBRAL_SATURACION_90D_MM} color="var(--color-brand-600)" />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-ink-700">
-                <span>Pronóstico próximos 7 días</span>
+                <Tooltip texto="Pasados los 100 mm en una semana es una lluvia fuera de lo común, y el riesgo de los lotes sube.">
+                  <span>Pronóstico próximos 7 días</span>
+                </Tooltip>
                 <span className="font-mono">{sumaProximos7.toFixed(0)} / {UMBRAL_EVENTO_7D_MM} mm</span>
               </div>
               <BarraProgreso

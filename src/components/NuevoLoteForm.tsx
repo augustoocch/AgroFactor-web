@@ -88,7 +88,7 @@ export function NuevoLoteForm({ establecimientoId, anillo, onCerrar }: Props) {
               className="mt-1 w-full rounded-lg border border-paper-300 bg-paper-50 px-3 py-2 text-sm outline-none focus:border-brand-500"
             />
             <p className="mt-1 text-[11px] leading-tight text-ink-600">
-              Cuantas veces se anego este lote en los ultimos 10 anios. Afecta el score de riesgo.
+              En cuantos de los ultimos 10 anios se anego. Un lote con historia de agua se evalua como mas expuesto.
             </p>
           </div>
         </div>

@@ -19,7 +19,7 @@ export type Movilidad = "MOVIBLE" | "FIJO";
 
 export type MargenAccion = "NINGUNO" | "COSECHA_ANTICIPADA" | "RESIEMBRA";
 
-export type TipoReporte = "EMERGENCIA_AGROPECUARIA" | "FICHA_ARRENDAMIENTO" | "IMPACTO_ECONOMICO";
+export type TipoReporte = "EMERGENCIA_AGROPECUARIA" | "IMPACTO_ECONOMICO";
 
 export interface AuthResponse {
   token: string;
@@ -176,7 +176,8 @@ export interface EvaluacionRiesgo {
   fecha: string;
   scoreSusceptibilidad: number;
   factores: {
-    elevacionPercentil: number;
+    /** null si OpenTopoData no respondio: el factor topografico quedo fuera del score ponderado. */
+    elevacionPercentil: number | null;
     antecedentesHistoricos: number;
     tipoSueloScore: number;
     precipitacionRecienteMm: number;
@@ -280,6 +281,22 @@ export interface ParametrosHidrologicos {
   horaPicoAnegamiento: number;
   desnivelM: number;
   advertencia: string | null;
+
+  // --- Suelo: de que esta hecho el lote y cuanto de eso se midio ---
+  //
+  // Todos opcionales a proposito: una respuesta guardada de antes del modulo de suelo no los
+  // trae, y la pantalla no puede romperse por eso. El panel omite la seccion de suelo en vez de
+  // tumbar la pagina entera.
+  claseTexturalSuelo?: string | null;
+  grupoHidrologico?: string;
+  /** "C/D" cuando la napa somera lleva al lote a comportarse como grupo D pese a su textura. */
+  grupoHidrologicoDual?: string | null;
+  napaCm?: number | null;
+  procedenciaSuelo?: ProcedenciaDato;
+  porosidadSuelo?: number;
+  /** Que fraccion del lote se apoya en dato cargado y cuanta en el supuesto regional. */
+  coberturaSueloPct?: number;
+  zonasSuelo?: ZonaSueloAplicada[];
 }
 
 export interface SimulacionInundacion {
@@ -332,6 +349,14 @@ export interface AccionRecomendada {
   justificacion: Justificacion;
   /** Que hacer con este activo. No es "mover primero" para todos: un activo fijo no se traslada. */
   recomendacion: string;
+  /**
+   * Valor del activo por el riesgo de su lote. Es la cifra que el usuario realmente pidio: el
+   * `scorePrioridad` solo sirve para ordenar y no significa nada en absoluto.
+   * Null en planes generados antes de la migracion V22.
+   */
+  valorEnRiesgo: number | null;
+  /** Riesgo del lote al generarse el plan. Null en planes anteriores a V22. */
+  severidadEstimada: number | null;
 }
 
 export interface PlanAccion {
@@ -561,4 +586,73 @@ export interface AfectacionSugerida {
   formulaPerdida: string | null;
   formulaDano: string | null;
   advertencia: string | null;
+}
+
+// --- Suelo ---------------------------------------------------------------------------------
+
+/**
+ * De donde salio un dato de suelo, de mas a menos confiable. Se muestra junto al valor: el
+ * diferencial declarado en el TP es que el usuario pueda discutir el resultado, y un numero sin
+ * procedencia no se discute.
+ */
+export type ProcedenciaDato = "LABORATORIO" | "DECLARADA" | "SOILGRIDS" | "SUPUESTO_REGIONAL";
+
+/**
+ * Cuan viejo es el dato. NO lo invalida: el sistema nunca descarta un dato por viejo, porque la
+ * alternativa es volver al supuesto regional, que es peor. Solo informa para que el usuario
+ * pondere cuanto creerle.
+ */
+export type AntiguedadDato = "VIGENTE" | "ANTIGUO" | "MUY_ANTIGUO";
+
+export type TipoMedicionCampo = "NAPA" | "TEXTURA" | "BIOMASA";
+
+export interface ZonaSuelo {
+  id: string;
+  loteId: string;
+  nombre: string;
+  geometria: Coordenada[];
+  superficieHectareas: number;
+  fraccionDelLote: number | null;
+
+  arenaPct: number | null;
+  limoPct: number | null;
+  arcillaPct: number | null;
+  procedenciaTextura: ProcedenciaDato | null;
+  texturaMedidaEn: string | null;
+  antiguedadTextura: AntiguedadDato | null;
+
+  /** Profundidad de la freatica en cm. Bajo 60 cm el lote escurre como grupo hidrologico D. */
+  napaCm: number | null;
+  procedenciaNapa: ProcedenciaDato | null;
+  napaMedidaEn: string | null;
+  antiguedadNapa: AntiguedadDato | null;
+
+  cantidadMediciones: number;
+}
+
+export interface MedicionCampo {
+  id: string;
+  zonaSueloId: string;
+  tipo: TipoMedicionCampo;
+  ubicacion: Coordenada;
+  medidaEn: string;
+  antiguedad: AntiguedadDato;
+  procedencia: ProcedenciaDato;
+  napaCm: number | null;
+  arenaPct: number | null;
+  limoPct: number | null;
+  arcillaPct: number | null;
+  biomasaKgMsHa: number | null;
+  observaciones: string | null;
+}
+
+/** Que suelo termino usando cada zona en una corrida, tal como lo devuelve el motor. */
+export interface ZonaSueloAplicada {
+  claseTextural: string | null;
+  grupoHidrologico: string;
+  grupoHidrologicoDual: string | null;
+  curvaNumeroII: number;
+  napaCm: number | null;
+  procedencia: ProcedenciaDato;
+  fuente: string;
 }

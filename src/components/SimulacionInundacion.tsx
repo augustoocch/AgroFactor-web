@@ -111,6 +111,10 @@ export interface ParametrosSimulacion {
   humedadSueloM3m3: number;
 }
 
+// Humedad a la que el perfil ya no admite mas agua. Es el mismo tope que usa el calculo, y sirve
+// para mostrar la humedad como "que tan lleno esta el suelo" en vez de en m3/m3.
+const HUMEDAD_SATURACION_M3M3 = 0.45;
+
 const PUNTOS_CARDINALES = [
   { deg: 0, etiqueta: "N" },
   { deg: 45, etiqueta: "NE" },
@@ -135,6 +139,7 @@ function Deslizador({
   paso,
   unidad,
   ayuda,
+  formatearValor,
   onChange,
 }: {
   etiqueta: string;
@@ -144,6 +149,9 @@ function Deslizador({
   paso: number;
   unidad: string;
   ayuda?: string;
+  /** Para los controles cuyo valor interno no se puede mostrar tal cual (ver la humedad del
+      suelo, que se maneja en m3/m3 y en pantalla va como porcentaje del perfil ocupado). */
+  formatearValor?: (v: number) => string;
   onChange: (v: number) => void;
 }) {
   return (
@@ -151,8 +159,7 @@ function Deslizador({
       <div className="flex items-baseline justify-between gap-2">
         <label className="text-xs font-medium text-ink-800">{etiqueta}</label>
         <span className="font-mono text-xs text-brand-700">
-          {valor}
-          {unidad}
+          {formatearValor ? formatearValor(valor) : `${valor}${unidad}`}
         </span>
       </div>
       <input
@@ -518,7 +525,7 @@ export function SimulacionInundacion({
               max={300}
               paso={5}
               unidad=" mm"
-              ayuda="Se reparte en el tiempo con forma de tormenta real (hietograma SCS Tipo II)."
+              ayuda="No cae pareja: se reparte a lo largo del evento como lo hace una tormenta de verdad."
               onChange={(v) => onCambiar({ ...parametros, escenarioLluviaMm: v })}
             />
             <Deslizador
@@ -540,7 +547,7 @@ export function SimulacionInundacion({
               max={150}
               paso={5}
               unidad=" mm"
-              ayuda="Define la condición de humedad antecedente del método SCS-CN."
+              ayuda="Cuanto llovio antes del evento. Sobre un suelo ya mojado, la misma lluvia deja mas agua arriba."
               onChange={(v) => onCambiar({ ...parametros, lluvia5DiasMm: v })}
             />
             <Deslizador
@@ -549,8 +556,9 @@ export function SimulacionInundacion({
               min={0.05}
               max={0.45}
               paso={0.01}
-              unidad=" m³/m³"
-              ayuda="Cuanto del perfil ya esta ocupado antes de la primera gota (saturacion ~0.45)."
+              unidad=""
+              formatearValor={(v) => `${Math.round((v / HUMEDAD_SATURACION_M3M3) * 100)}% lleno`}
+              ayuda="Cuanta agua tiene el suelo antes de la primera gota. Al 100 % ya no le entra una gota mas."
               onChange={(v) => onCambiar({ ...parametros, humedadSueloM3m3: v })}
             />
           </Grupo>
@@ -563,7 +571,7 @@ export function SimulacionInundacion({
               max={80}
               paso={1}
               unidad=" km/h"
-              ayuda="Afecta la evapotranspiracion (FAO-56) y arrastra la lamina superficial."
+              ayuda="Seca mas rapido el suelo y empuja el agua que queda en superficie."
               onChange={(v) => onCambiar({ ...parametros, vientoKmh: v })}
             />
             <Deslizador
@@ -657,32 +665,14 @@ export function SimulacionInundacion({
       <div>
         <div className="mb-2 flex items-center gap-1.5">
           <h3 className="text-sm font-medium text-ink-950">Balance hídrico del evento</h3>
-          <InfoModal titulo="Cómo se calcula la simulación">
+          <InfoModal titulo="Qué hace esta simulación">
             <p>
-              Cada hora se resuelve un balance de agua celda por celda sobre el modelo de elevación real (SRTM 30m):
+              Reparte la lluvia hora por hora sobre la altura real del terreno: una parte se infiltra, otra se
+              evapora y el resto corre hacia los puntos más bajos, arrastrada por la pendiente y el viento.
             </p>
-            <ul className="list-disc space-y-1 pl-4">
-              <li>
-                <strong>Número de Curva (SCS-CN, USDA-NRCS)</strong>: cuánta lluvia se transforma en escorrentía según
-                el uso del suelo y el grupo hidrológico (D en la Pampa Deprimida), corregido por la lluvia real de los
-                últimos 5 días.
-              </li>
-              <li>
-                <strong>Infiltración</strong>: tasa tipo Horton gobernada por el agua que el perfil ya tiene, acotada
-                por el almacenamiento potencial S del método CN.
-              </li>
-              <li>
-                <strong>Evapotranspiración FAO-56 Penman-Monteith</strong>: con temperatura, humedad, viento a 2m y
-                radiación solar reales.
-              </li>
-              <li>
-                <strong>Escurrimiento con Manning</strong>: v = (1/n)·h^(2/3)·S^(1/2), con la pendiente sacada del DEM
-                y reparto hacia las celdas de menor carga hidráulica.
-              </li>
-            </ul>
-            <p className="text-xs text-ink-600">
-              Es un modelo 2D simplificado de onda de difusión, no un solver de Saint-Venant: sirve para comparar
-              comportamiento (dónde se junta el agua, cuánto tarda, cuánto infiltra), no para diseñar obra hidráulica.
+            <p>
+              Sirve para ver dónde se junta el agua, cuánto tarda en juntarse y cuánto tarda en irse. No alcanza
+              para dimensionar una obra hidráulica.
             </p>
           </InfoModal>
         </div>
@@ -718,11 +708,23 @@ export function SimulacionInundacion({
                 : "El terreno de alrededor no drena hacia el campo"
             }
           />
-          <Metrica
-            etiqueta="Numero de Curva"
-            valor={`${parametrosHidro.curvaNumeroAjustada.toFixed(0)}`}
-            detalle={`Base ${parametrosHidro.curvaNumeroBase.toFixed(0)} · humedad antecedente ${parametrosHidro.condicionHumedadAntecedente}`}
-          />
+          {/* El suelo si se muestra: cambia el resultado y el usuario lo puede corregir cargando
+              su analisis. Se omite si la corrida no trajo datos de suelo. */}
+          {parametrosHidro.grupoHidrologico && (
+            <Metrica
+              etiqueta="Suelo"
+              valor={`Grupo ${parametrosHidro.grupoHidrologicoDual ?? parametrosHidro.grupoHidrologico}`}
+              detalle={
+                parametrosHidro.procedenciaSuelo === "SUPUESTO_REGIONAL"
+                  ? "Supuesto regional: no se midio el suelo de este campo"
+                  : `${parametrosHidro.claseTexturalSuelo ?? "textura resuelta"}${
+                      parametrosHidro.coberturaSueloPct != null
+                        ? ` · medido en el ${parametrosHidro.coberturaSueloPct.toFixed(0)}% del lote`
+                        : ""
+                    }`
+              }
+            />
+          )}
           <Metrica
             etiqueta="Almacenamiento del suelo"
             valor={`${parametrosHidro.retencionPotencialMm.toFixed(0)} mm`}
@@ -739,6 +741,23 @@ export function SimulacionInundacion({
             detalle={`Celda de ${parametrosHidro.celdaM.toFixed(0)} m`}
           />
         </div>
+
+        {parametrosHidro.procedenciaSuelo === "SUPUESTO_REGIONAL" && (
+          <p className="mt-2 rounded-xl border border-dashed border-ink-400/40 p-3 text-xs leading-snug text-ink-600">
+            El suelo de este campo no esta cargado, asi que la corrida asume grupo hidrologico D
+            -el de los suelos sodicos dominantes de la Pampa Deprimida-. Si tu campo es mas
+            arenoso, esta estimacion te sobreestima el agua que corre. Cargar la profundidad de
+            napa de un sector es lo que mas cambia el resultado.
+          </p>
+        )}
+
+        {parametrosHidro.grupoHidrologicoDual && (
+          <p className="mt-2 rounded-xl border border-clay-500/40 bg-clay-100 p-3 text-xs leading-snug text-clay-600">
+            Con la napa a {parametrosHidro.napaCm} cm, el suelo de este campo se comporta como
+            grupo D aunque su textura sea {parametrosHidro.claseTexturalSuelo}: por debajo de los
+            60 cm de freatica el perfil ya no tiene donde guardar el agua.
+          </p>
+        )}
 
         {parametrosHidro.advertencia && (
           <p className="mt-2 rounded-xl border border-clay-500/40 bg-clay-100 p-3 text-xs leading-snug text-clay-600">
