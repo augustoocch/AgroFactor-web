@@ -5,7 +5,11 @@ import { AnimatePresence, motion } from "framer-motion";
 import { api, clasificarError, descargarArchivo } from "@/lib/api";
 import { easeOutExpo } from "@/lib/motion";
 import { useToast } from "@/lib/toast-context";
-import { InfoModal } from "@/components/InfoModal";
+import Link from "next/link";
+import { EncabezadoPantalla } from "@/components/EncabezadoPantalla";
+import { InfoAside } from "@/components/InfoAside";
+import { boton, enlace } from "@/lib/estilos";
+import { rutaDe } from "@/lib/navegacion";
 import { TablaItemsImpacto } from "@/components/TablaItemsImpacto";
 import type { InformeImpactoEconomico, Reporte } from "@/lib/types";
 
@@ -74,12 +78,13 @@ export function PanelImpactoEconomico({ establecimientoId }: { establecimientoId
   const hayItemsSinMonto = informe?.items.some((i) => i.montoUsd == null) ?? false;
 
   return (
-    <div className="space-y-5 rounded-2xl border border-paper-300 bg-paper-50 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="flex items-center gap-1.5">
-            <p className="text-sm uppercase tracking-wide text-brand-600">Después de un evento</p>
-            <InfoModal titulo="Cómo se arma este informe">
+    <div>
+      <EncabezadoPantalla
+        segmento="impacto"
+        titulo="Impacto económico"
+        descripcion="Daños, producción perdida y costos de recuperación, en dólares y a precio de mercado del día. Es un borrador que podés corregir antes de confirmarlo."
+        ayuda={
+          <InfoAside titulo="Cómo se arma este informe" etiqueta="De dónde salen los precios">
               <p>
                 El sistema junta lo que ya declaraste (% de daño en activos y cultivos) y calcula cada fila con una
                 fórmula auditable que podés abrir línea por línea. La hacienda se valúa al precio de la categoría en el
@@ -92,29 +97,24 @@ export function PanelImpactoEconomico({ establecimientoId }: { establecimientoId
                 tiene pizarra. Esas son tuyas para completar. El resto llega con un número, y lo podés ajustar si
                 conocés mejor tu caso.
               </p>
-            </InfoModal>
-          </div>
-          <h2 className="font-display text-lg font-medium text-ink-950">Impacto económico</h2>
-          <p className="mt-1 max-w-2xl text-sm text-ink-600">
-            Daños, pérdidas de producción y costos de recuperación, todo en dólares y a precio de mercado del día.
-            Un borrador editable, no un número cerrado.
-          </p>
-        </div>
-        <button
-          onClick={() => generar.mutate()}
-          disabled={generar.isPending}
-          className="rounded-full bg-brand-700 px-4 py-2 text-sm font-medium text-paper-50 shadow-sm transition-colors hover:bg-brand-600 disabled:opacity-50"
-        >
-          {generar.isPending ? "Generando..." : informe ? "Generar de nuevo" : "Generar pre-análisis"}
-        </button>
-      </div>
+            </InfoAside>
+        }
+        acciones={
+          <button onClick={() => generar.mutate()} disabled={generar.isPending} className={informe ? boton.sutil : boton.primario}>
+            {generar.isPending ? "Generando..." : informe ? "Generar de nuevo" : "Generar borrador"}
+          </button>
+        }
+      />
 
       {!informe && (
-        <div className="rounded-xl border border-dashed border-paper-300 p-6 text-center">
-          <p className="text-sm text-ink-700">Todavía no generaste un informe de impacto económico.</p>
-          <p className="mx-auto mt-1 max-w-md text-xs text-ink-600">
-            Se arma con el % de daño que ya declaraste en activos y cultivos. Si no declaraste nada todavía, hacelo
-            arriba, en &quot;Declaración de daños&quot;.
+        <div className="rounded-xl border border-dashed border-paper-300 px-6 py-10 text-center">
+          <p className="font-display text-lg text-ink-950">Todavía no hay un borrador</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-ink-600">
+            Se arma con el porcentaje de daño declarado en cultivos y activos. Si todavía no declaraste nada,{" "}
+            <Link href={rutaDe(establecimientoId, "danos")} className={enlace}>
+              empezá por ahí
+            </Link>
+            .
           </p>
         </div>
       )}
@@ -150,28 +150,31 @@ export function PanelImpactoEconomico({ establecimientoId }: { establecimientoId
 
             <TablaItemsImpacto establecimientoId={establecimientoId} informe={informe} />
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-paper-300 pt-4">
-              <p className="font-display text-xl font-medium text-ink-950">
-                Total: <span className="font-mono">USD {informe.totalGeneralUsd.toLocaleString("es-AR")}</span>
-              </p>
+            <div className="flex flex-wrap items-end justify-between gap-4 border-t border-paper-300 pt-5">
+              <div className="border-l-2 border-clay-500 pl-4">
+                <p className="font-display text-3xl font-medium tabular-nums text-ink-950">
+                  USD {informe.totalGeneralUsd.toLocaleString("es-AR")}
+                </p>
+                <p className="text-sm text-ink-600">total estimado</p>
+              </div>
               <div className="flex items-center gap-2">
                 {informe.estado === "BORRADOR" ? (
                   <button
                     onClick={() => confirmar.mutate()}
                     disabled={hayItemsSinMonto || confirmar.isPending}
                     title={hayItemsSinMonto ? "Completá el monto de todos los ítems antes de confirmar" : undefined}
-                    className="rounded-full border border-brand-500 px-3.5 py-1.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-100 disabled:opacity-50"
+                    className={boton.secundario}
                   >
                     Confirmar informe
                   </button>
                 ) : (
-                  <span className="rounded-full bg-risk-bajo-bg px-3 py-1 text-xs font-medium text-risk-bajo">Confirmado</span>
+                  <span className="rounded-full bg-risk-bajo-bg px-3 py-1 text-xs font-medium text-risk-bajo-ink">Confirmado</span>
                 )}
                 <button
                   onClick={() => generarPdf.mutate()}
                   disabled={informe.estado !== "CONFIRMADO" || generarPdf.isPending}
                   title={informe.estado !== "CONFIRMADO" ? "Confirmá el informe antes de descargarlo" : undefined}
-                  className="rounded-full bg-clay-500 px-3.5 py-1.5 text-sm font-medium text-paper-50 transition-colors hover:bg-clay-600 disabled:opacity-50"
+                  className={boton.primario}
                 >
                   {generarPdf.isPending ? "Generando PDF..." : "Descargar informe"}
                 </button>

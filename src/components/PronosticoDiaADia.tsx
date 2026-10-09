@@ -63,6 +63,22 @@ function motivoSinBandas(dia: DiaAnalizado): string {
   );
 }
 
+/**
+ * El dia en una oracion, en el orden en que se encadena: cuanto llueve, como llega el suelo, que
+ * queda arriba. Es lo que antes habia que reconstruir leyendo diecisiete casilleros.
+ */
+function resumenDelDia(dia: DiaAnalizado): string {
+  if (dia.precipitacionMm <= 0) return "No se espera lluvia, así que no hay agua que se acumule.";
+  const prob = dia.probabilidadLluviaPct != null ? ` (${dia.probabilidadLluviaPct.toFixed(0)}% de probabilidad)` : "";
+  const suelo = SUELO_EN_PALABRAS[dia.condicionHumedadAntecedente] ?? "sin dato de humedad";
+  const lluvia = `Se esperan ${dia.precipitacionMm.toFixed(0)} mm${prob} y el suelo llega ${suelo}.`;
+  if (dia.laminaMaximaMm <= 0) return `${lluvia} El suelo los absorbe: no queda agua en superficie.`;
+  return (
+    `${lluvia} Quedaría hasta ${aguaDelDia(dia)} de agua sobre el ${dia.superficieAnegadaPct.toFixed(0)}% ` +
+    `de la superficie, con el momento más alto a las ${dia.horaPico} horas.`
+  );
+}
+
 /** Fila etiquetada dentro del boton de un dia: sin la etiqueta el numero no se entiende. */
 function Dato({ etiqueta, valor, resaltado }: { etiqueta: string; valor: string; resaltado?: string }) {
   return (
@@ -153,11 +169,6 @@ export function PronosticoDiaADia({ loteId, establecimientoId, lotes, dias = 7 }
       {/* Cada valor va con su etiqueta. Antes decia "0.0 mm / 0% · I / sin agua": el numero
           romano no lo entendia nadie, y "sin agua" no aclaraba si faltaba el dato o si el
           resultado era que no se acumulaba. */}
-      <p className="text-xs text-ink-600">
-        Para cada dia: la lluvia esperada, con que humedad llega el suelo, y cuanta agua quedaria en superficie.
-        Cuando no queda agua, el mapa no dibuja manchas.
-      </p>
-
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 lg:grid-cols-7">
         {data.dias.map((d, i) => {
           const { dia: nombre, fecha } = etiquetaFecha(d.fecha);
@@ -190,77 +201,74 @@ export function PronosticoDiaADia({ loteId, establecimientoId, lotes, dias = 7 }
 
       <MapaIsobandas lotes={lotes} bandas={dia.bandas} unidad="mm" motivoSinBandas={motivoSinBandas(dia)} />
 
-      {/* Detalle tecnico del dia elegido. Meteorologia arriba, estado del suelo e hidrologia
-          abajo: es la cadena que explica por que ese dia da lo que da. */}
-      <div className="space-y-2 rounded-2xl border border-paper-300 bg-paper-100 p-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h4 className="font-display text-sm font-medium text-ink-950">
-            {etiquetaFecha(dia.fecha).dia} {etiquetaFecha(dia.fecha).fecha} · {dia.condicion.toLowerCase()}
-          </h4>
-          {data.celdaM && <span className="text-[10px] text-ink-600">celda de calculo {data.celdaM} m</span>}
-        </div>
-
-        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
-          <Celda etiqueta="Lluvia" valor={dia.precipitacionMm.toFixed(1)} unidad=" mm" />
-          <Celda
-            etiqueta="Probabilidad"
-            valor={dia.probabilidadLluviaPct?.toFixed(0) ?? null}
-            unidad="%"
-            ayuda={
-              <InfoModal titulo="Qué significa esta probabilidad">
-                <p>
-                  Es el pico de <strong>una hora</strong>, no la chance del día entero.
-                </p>
-                <p>
-                  Por eso un día puede tener más probabilidad y menos lluvia: tiene una hora con
-                  algo de chance, pero el modelo no llega a producir agua en ninguna.
-                </p>
-                <p className="text-ink-600">
-                  Para decidir, mirá los milímetros. Esto dice cuánta confianza tenerles.
-                </p>
-              </InfoModal>
-            }
-          />
-          <Celda etiqueta="Temp max / min" valor={`${dia.tempMaxC?.toFixed(0) ?? "—"}/${dia.tempMinC?.toFixed(0) ?? "—"}`} unidad="°C" />
-          <Celda etiqueta="Humedad" valor={dia.humedadMediaPct?.toFixed(0) ?? null} unidad="%" />
-          <Celda etiqueta="Viento / rafaga" valor={`${dia.vientoMaxKmh?.toFixed(0) ?? "—"}/${dia.vientoRafagaKmh?.toFixed(0) ?? "—"}`} unidad=" km/h" />
-          <Celda etiqueta="Radiacion" valor={dia.radiacionSolarMj?.toFixed(1) ?? null} unidad=" MJ" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
-          <Celda etiqueta="Lluvia previa 5d" valor={dia.lluviaPrevia5DiasMm.toFixed(1)} unidad=" mm" />
-          <Celda
-            etiqueta="Suelo al llegar"
-            valor={SUELO_EN_PALABRAS[dia.condicionHumedadAntecedente] ?? dia.condicionHumedadAntecedente}
-          />
-          <Celda etiqueta="Lamina maxima" valor={(dia.laminaMaximaMm / 10).toFixed(1)} unidad=" cm" />
-          <Celda etiqueta="Superficie anegada" valor={dia.superficieAnegadaPct.toFixed(0)} unidad="%" />
-          <Celda etiqueta="Pico" valor={dia.laminaMaximaMm > 0 ? `${dia.horaPico}` : null} unidad=" h" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-          <Celda etiqueta="Infiltracion" valor={dia.infiltracionMediaMm.toFixed(0)} unidad=" mm" />
-          <Celda etiqueta="Entra desde afuera" valor={dia.aporteExternoMm.toFixed(0)} unidad=" mm" />
-          <Celda etiqueta="Escurre fuera" valor={dia.escurrimientoFueraDelLoteMm.toFixed(0)} unidad=" mm" />
-        </div>
+      {/* El dia elegido, primero en una oracion: es lo que cualquiera necesita saber. La cadena
+          tecnica completa (meteorologia → suelo → balance de agua) queda plegada para el asesor
+          que quiere auditarla; antes eran diecisiete casilleros abiertos para todo el mundo. */}
+      <div className="rounded-xl border border-paper-300 bg-paper-50 p-4">
+        <p className="text-xs font-medium uppercase tracking-[0.08em] text-brand-600">
+          {etiquetaFecha(dia.fecha).dia} {etiquetaFecha(dia.fecha).fecha}
+        </p>
+        <p className="mt-1 max-w-3xl text-[0.95rem] leading-relaxed text-ink-900">{resumenDelDia(dia)}</p>
 
         {dia.impactos.length > 0 && (
-          <ul className="flex flex-wrap gap-1.5">
+          <ul className="mt-3 flex flex-wrap gap-1.5">
             {dia.impactos.map((i) => (
-              <li key={i} className="rounded-full bg-clay-100 px-2.5 py-0.5 text-[11px] text-clay-600">
+              <li key={i} className="rounded-full bg-clay-100 px-2.5 py-0.5 text-xs text-clay-600">
                 {i}
               </li>
             ))}
           </ul>
         )}
 
-        {dia.bandas.length === 0 && (
-          <p className="text-xs text-ink-600">
-            {dia.precipitacionMm === 0
-              ? "Sin lluvia pronosticada para este dia: no hay acumulacion que mapear."
-              : `El suelo llega ${SUELO_EN_PALABRAS[dia.condicionHumedadAntecedente] ?? "sin saturar"} y absorbe los ${dia.precipitacionMm.toFixed(1)} mm de este dia: no queda agua en superficie.`}
-          </p>
-        )}
+        <details className="group mt-4 border-t border-paper-200 pt-3">
+          <summary className="cursor-pointer list-none text-sm font-medium text-brand-700 [&::-webkit-details-marker]:hidden">
+            <span className="group-open:hidden">Ver el detalle técnico del día</span>
+            <span className="hidden group-open:inline">Ocultar el detalle técnico</span>
+          </summary>
+          <div className="mt-3 space-y-2">
+            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-600">Tiempo</p>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+              <Celda etiqueta="Lluvia" valor={dia.precipitacionMm.toFixed(1)} unidad=" mm" />
+              <Celda
+                etiqueta="Probabilidad"
+                valor={dia.probabilidadLluviaPct?.toFixed(0) ?? null}
+                unidad="%"
+                ayuda={
+                  <InfoModal titulo="Qué significa esta probabilidad">
+                    <p>
+                      Es el pico de <strong>una hora</strong>, no la chance del día entero.
+                    </p>
+                    <p>
+                      Por eso un día puede tener más probabilidad y menos lluvia: tiene una hora con algo de chance,
+                      pero el modelo no llega a producir agua en ninguna.
+                    </p>
+                    <p className="text-ink-600">Para decidir, mirá los milímetros. Esto dice cuánta confianza tenerles.</p>
+                  </InfoModal>
+                }
+              />
+              <Celda etiqueta="Temp máx / mín" valor={`${dia.tempMaxC?.toFixed(0) ?? "—"}/${dia.tempMinC?.toFixed(0) ?? "—"}`} unidad="°C" />
+              <Celda etiqueta="Humedad" valor={dia.humedadMediaPct?.toFixed(0) ?? null} unidad="%" />
+              <Celda etiqueta="Viento / ráfaga" valor={`${dia.vientoMaxKmh?.toFixed(0) ?? "—"}/${dia.vientoRafagaKmh?.toFixed(0) ?? "—"}`} unidad=" km/h" />
+              <Celda etiqueta="Radiación" valor={dia.radiacionSolarMj?.toFixed(1) ?? null} unidad=" MJ" />
+            </div>
+
+            <p className="pt-1 text-[11px] font-medium uppercase tracking-wide text-ink-600">Suelo y agua</p>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+              <Celda etiqueta="Lluvia previa 5d" valor={dia.lluviaPrevia5DiasMm.toFixed(1)} unidad=" mm" />
+              <Celda
+                etiqueta="Suelo al llegar"
+                valor={SUELO_EN_PALABRAS[dia.condicionHumedadAntecedente] ?? dia.condicionHumedadAntecedente}
+              />
+              <Celda etiqueta="Lámina máxima" valor={(dia.laminaMaximaMm / 10).toFixed(1)} unidad=" cm" />
+              <Celda etiqueta="Superficie anegada" valor={dia.superficieAnegadaPct.toFixed(0)} unidad="%" />
+              <Celda etiqueta="Pico" valor={dia.laminaMaximaMm > 0 ? `${dia.horaPico}` : null} unidad=" h" />
+              <Celda etiqueta="Infiltración" valor={dia.infiltracionMediaMm.toFixed(0)} unidad=" mm" />
+              <Celda etiqueta="Entra desde afuera" valor={dia.aporteExternoMm.toFixed(0)} unidad=" mm" />
+              <Celda etiqueta="Escurre fuera" valor={dia.escurrimientoFueraDelLoteMm.toFixed(0)} unidad=" mm" />
+            </div>
+            {data.celdaM && <p className="text-[11px] text-ink-500">Celda de cálculo: {data.celdaM} m.</p>}
+          </div>
+        </details>
       </div>
     </div>
   );

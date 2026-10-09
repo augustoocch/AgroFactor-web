@@ -15,9 +15,13 @@
   color-scheme: light;
 
   --color-ink-950: oklch(19% 0.02 250);
+  --color-ink-900: oklch(24% 0.025 250);
   --color-ink-800: oklch(30% 0.03 250);
+  --color-ink-700: oklch(38% 0.03 250);
   --color-ink-600: oklch(45% 0.03 250);
+  --color-ink-500: oklch(54% 0.025 250);
   --color-ink-400: oklch(62% 0.02 250);
+  --color-ink-300: oklch(76% 0.015 250);
 
   --color-paper-50: oklch(98% 0.006 90);
   --color-paper-100: oklch(96% 0.008 85);
@@ -44,6 +48,13 @@
   --color-risk-alto: oklch(53% 0.17 27);
   --color-risk-alto-bg: oklch(93% 0.04 30);
 
+  /* Variantes para TEXTO sobre el fondo -bg de cada nivel. El tono de relleno (bajo/medio/alto)
+     esta pensado para puntos, bordes y mapas; como texto el ambar no llega a 3:1 sobre su propio
+     fondo. Estas bajan la luminosidad sin cambiar el matiz para pasar AA (4.5:1). */
+  --color-risk-bajo-ink: oklch(42% 0.09 148);
+  --color-risk-medio-ink: oklch(46% 0.1 62);
+  --color-risk-alto-ink: oklch(45% 0.15 27);
+
   --font-display: var(--font-fraunces);
   --font-sans: var(--font-inter);
   --font-mono: var(--font-jetbrains);
@@ -62,9 +73,13 @@
 
 @theme inline {
   --color-ink-950: var(--color-ink-950);
+  --color-ink-900: var(--color-ink-900);
   --color-ink-800: var(--color-ink-800);
+  --color-ink-700: var(--color-ink-700);
   --color-ink-600: var(--color-ink-600);
+  --color-ink-500: var(--color-ink-500);
   --color-ink-400: var(--color-ink-400);
+  --color-ink-300: var(--color-ink-300);
 
   --color-paper-50: var(--color-paper-50);
   --color-paper-100: var(--color-paper-100);
@@ -90,6 +105,9 @@
   --color-risk-medio-bg: var(--color-risk-medio-bg);
   --color-risk-alto: var(--color-risk-alto);
   --color-risk-alto-bg: var(--color-risk-alto-bg);
+  --color-risk-bajo-ink: var(--color-risk-bajo-ink);
+  --color-risk-medio-ink: var(--color-risk-medio-ink);
+  --color-risk-alto-ink: var(--color-risk-alto-ink);
 
   --font-display: var(--font-display);
   --font-sans: var(--font-sans);

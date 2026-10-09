@@ -1,5 +1,6 @@
 "use client";
 
+import { Icono } from "@/components/Icono";
 import "leaflet/dist/leaflet.css";
 import { useEffect, useRef } from "react";
 import { GeoJSON, MapContainer, Polygon, TileLayer, useMap } from "react-leaflet";
@@ -97,9 +98,7 @@ export function MapaIsobandas({ lotes, bandas, unidad = "mm", alto = "h-[46vh]",
         {bandas.length === 0 && motivoSinBandas && (
           <div className="pointer-events-none absolute inset-x-3 bottom-3 z-[500] flex justify-start">
             <p className="pointer-events-auto flex max-w-xs items-start gap-2 rounded-xl border border-paper-300 bg-paper-50/95 px-3 py-2 text-xs leading-snug text-ink-700 shadow-md backdrop-blur">
-              <span aria-hidden className="mt-0.5 shrink-0 text-sm">
-                💧
-              </span>
+              <Icono nombre="info" className="mt-px h-4 w-4 shrink-0 text-brand-600" />
               {motivoSinBandas}
             </p>
           </div>

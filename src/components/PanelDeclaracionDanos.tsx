@@ -13,7 +13,14 @@ import type { AfectacionSugerida, Activo, CultivoImplantado, Lote } from "@/lib/
  * declarado por el productor. El sistema nunca tuvo dónde cargar ese número — solo calculaba la
  * propensión del lote a inundarse, que es otra cosa. Esta pantalla existe para completar eso.
  */
-export function PanelDeclaracionDanos({ establecimientoId }: { establecimientoId: string }) {
+export function PanelDeclaracionDanos({
+  establecimientoId,
+  vacio,
+}: {
+  establecimientoId: string;
+  /** Lo que se muestra cuando no hay nada cargado para declarar. */
+  vacio: React.ReactNode;
+}) {
   const { data: lotes = [] } = useQuery({
     queryKey: ["lotes", establecimientoId],
     queryFn: () => api.get<Lote[]>(`/establecimientos/${establecimientoId}/lotes`),
@@ -38,23 +45,17 @@ export function PanelDeclaracionDanos({ establecimientoId }: { establecimientoId
 
   const nombreDeLote = (loteId: string | null) => lotes.find((l) => l.id === loteId)?.nombre ?? "sin lote";
 
-  if (activos.length === 0 && cultivos.length === 0) return null;
+  if (activos.length === 0 && cultivos.length === 0) return <>{vacio}</>;
 
   return (
-    <div className="rounded-2xl border border-paper-300 bg-paper-50 p-6">
-      <p className="text-sm uppercase tracking-wide text-brand-600">Después de un evento</p>
-      <h2 className="font-display text-lg font-medium text-ink-950">Declaración de daños</h2>
-      <p className="mt-1 max-w-2xl text-sm text-ink-600">
-        La Ley 26.509 define &quot;emergencia agropecuaria&quot; como un daño de al menos 50% sobre la producción, y
-        &quot;desastre agropecuario&quot; desde el 80%. Ese porcentaje lo declarás vos por cada activo o cultivo afectado, y
-        es tuyo: el sistema propone un número cuando tiene con qué calcularlo, pero no lo escribe ni lo corrige. Se usa
-        en el informe y queda como respaldo de la DDJJ que se presenta ante la autoridad provincial.
-      </p>
-
+    <div className="space-y-10">
       {cultivos.length > 0 && (
-        <div className="mt-5 space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-600">Cultivos</p>
-          <ul className="space-y-1.5">
+        <section>
+          <h2 className="font-display text-lg font-medium text-ink-950">Cultivos</h2>
+          <p className="mt-0.5 text-sm text-ink-600">
+            Cuando el sistema registró agua sobre el lote, propone dos porcentajes. Tocá uno para copiarlo al campo.
+          </p>
+          <ul className="mt-4 divide-y divide-paper-200 rounded-xl border border-paper-300 bg-paper-50">
             {cultivos.map((c) => (
               <FilaDanoCultivo
                 key={c.id}
@@ -65,18 +66,18 @@ export function PanelDeclaracionDanos({ establecimientoId }: { establecimientoId
               />
             ))}
           </ul>
-        </div>
+        </section>
       )}
 
       {activos.length > 0 && (
-        <div className="mt-5 space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-600">Activos</p>
-          <ul className="space-y-1.5">
+        <section>
+          <h2 className="font-display text-lg font-medium text-ink-950">Activos</h2>
+          <ul className="mt-4 divide-y divide-paper-200 rounded-xl border border-paper-300 bg-paper-50">
             {activos.map((a) => (
               <FilaDanoActivo key={a.id} activo={a} nombreLote={nombreDeLote(a.loteAsociadoId)} establecimientoId={establecimientoId} />
             ))}
           </ul>
-        </div>
+        </section>
       )}
     </div>
   );
@@ -105,10 +106,10 @@ function FilaDano({
   const cambio = valor !== (valorGuardado != null ? String(valorGuardado) : "");
 
   return (
-    <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-paper-300 bg-paper-100/60 px-3 py-2">
+    <li className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-4 py-3.5">
       <div>
-        <p className="text-sm font-medium text-ink-900">{titulo}</p>
-        <p className="text-xs text-ink-600">
+        <p className="font-medium text-ink-950">{titulo}</p>
+        <p className="text-sm text-ink-600">
           {subtitulo}
           {fechaDeclarada && (
             <span> · declarado el {new Date(fechaDeclarada).toLocaleDateString("es-AR")}</span>
@@ -124,13 +125,14 @@ function FilaDano({
           value={valor}
           onChange={(e) => setValor(e.target.value)}
           placeholder="%"
-          className="w-16 rounded-lg border border-paper-300 bg-paper-50 px-2 py-1 text-sm text-right outline-none focus:border-brand-500"
+          aria-label={`Porcentaje declarado para ${titulo}`}
+          className="w-20 rounded-lg border border-paper-300 bg-paper-50 px-2.5 py-1.5 text-right font-mono text-sm outline-none focus:border-brand-500"
         />
-        <span className="text-xs text-ink-600">%</span>
+        <span className="text-sm text-ink-600">%</span>
         <button
           onClick={() => onGuardar(numero)}
           disabled={!esValido || !cambio || guardando}
-          className="rounded-full border border-brand-500 px-2.5 py-1 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100 disabled:opacity-50"
+          className="ml-1 rounded-full border border-brand-500 px-3 py-1.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-100 disabled:opacity-40"
         >
           Guardar
         </button>

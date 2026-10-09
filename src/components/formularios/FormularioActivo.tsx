@@ -91,7 +91,7 @@ export function FormularioActivo({
   const queryClient = useQueryClient();
   const { notificar } = useToast();
   const esEdicion = activoAEditar !== null;
-  const volverA = `/establecimientos/${establecimientoId}/lotes/${loteId}`;
+  const volverA = `/establecimientos/${establecimientoId}/lotes/${loteId}/mapa`;
 
   const [paso, setPaso] = useState(0);
 

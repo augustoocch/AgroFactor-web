@@ -42,7 +42,7 @@ export function FormularioCultivo({
   const queryClient = useQueryClient();
   const { notificar } = useToast();
   const esEdicion = cultivoAEditar !== null;
-  const volverA = `/establecimientos/${establecimientoId}/lotes/${loteId}`;
+  const volverA = `/establecimientos/${establecimientoId}/lotes/${loteId}/mapa`;
 
   const [paso, setPaso] = useState(0);
 

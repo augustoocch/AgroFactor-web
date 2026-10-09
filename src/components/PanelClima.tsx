@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { api } from "@/lib/api";
 import { easeOutExpo } from "@/lib/motion";
-import { InfoModal } from "@/components/InfoModal";
 import { Tooltip } from "@/components/Tooltip";
 import { ClimaEscena } from "@/components/ClimaEscena";
 import type { CondicionClimatica, Pronostico, PronosticoDiario } from "@/lib/types";
@@ -95,7 +94,14 @@ function TarjetaDia({ dia, i }: { dia: PronosticoDiario; i: number }) {
 }
 
 /** Precipitación, temperatura, humedad y viento reales (Open-Meteo), con la interpretación agronómica día a día. */
-export function PanelClima({ loteReferenciaId }: { loteReferenciaId: string }) {
+export function PanelClima({
+  loteReferenciaId,
+  conDias = true,
+}: {
+  loteReferenciaId: string;
+  /** false donde el pronostico dia a dia ya se muestra en otro bloque de la misma pantalla. */
+  conDias?: boolean;
+}) {
   const { data: pronostico, isLoading } = useQuery({
     queryKey: ["clima", loteReferenciaId],
     queryFn: () => api.get<Pronostico>(`/lotes/${loteReferenciaId}/clima/pronostico`),
@@ -110,19 +116,10 @@ export function PanelClima({ loteReferenciaId }: { loteReferenciaId: string }) {
 
   return (
     <div className="space-y-4">
-      <div className="relative isolate overflow-hidden rounded-2xl border border-brand-200 bg-gradient-to-br from-brand-700 to-brand-900 p-5 text-paper-50">
+      <div className="relative isolate overflow-hidden rounded-xl bg-gradient-to-br from-brand-700 to-brand-900 p-5 text-paper-50">
         {actual && <ClimaEscena condicion={actual.condicion} />}
         <div className="relative flex items-center gap-1.5">
-          <p className="text-sm uppercase tracking-wide text-brand-200">El tiempo sobre el campo</p>
-          <InfoModal titulo="Qué muestra este panel">
-            <p>
-              Lo que ya llovió sobre el campo en los últimos 90 días y lo que se espera para la semana que viene.
-            </p>
-            <p>
-              Los avisos de cada día (deriva, helada, riesgo de enfermedad) marcan condiciones a tener en cuenta, no
-              anuncian que vayan a pasar.
-            </p>
-          </InfoModal>
+          <p className="text-xs font-medium uppercase tracking-[0.08em] text-brand-200">Ahora sobre el campo</p>
         </div>
 
         {isLoading && <p className="relative mt-2 text-sm text-brand-100">Consultando clima...</p>}
@@ -142,7 +139,7 @@ export function PanelClima({ loteReferenciaId }: { loteReferenciaId: string }) {
         )}
       </div>
 
-      {dias.length > 0 && (
+      {conDias && dias.length > 0 && (
         <div>
           <p className="mb-2 text-sm font-medium text-ink-800">Próximos {dias.length} días</p>
           <div className="flex gap-2.5 overflow-x-auto pb-1">
@@ -154,8 +151,8 @@ export function PanelClima({ loteReferenciaId }: { loteReferenciaId: string }) {
       )}
 
       {pronostico && (
-        <div className="rounded-2xl border border-paper-300 bg-paper-50 p-4">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-ink-600">Cuánta agua viene acumulando el campo</p>
+        <div className="rounded-xl border border-paper-300 bg-paper-50 p-4">
+          <p className="mb-3 text-sm font-medium text-ink-900">Cuánta agua viene acumulando el campo</p>
           <div className="space-y-3">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-ink-700">

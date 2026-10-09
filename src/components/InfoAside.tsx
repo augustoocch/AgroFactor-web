@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import { Icono } from "@/components/Icono";
 import { easeOutExpo } from "@/lib/motion";
 
 /**
@@ -17,11 +18,15 @@ import { easeOutExpo } from "@/lib/motion";
 export function InfoAside({
   titulo,
   etiqueta,
+  antetitulo = "Referencia",
   children,
 }: {
   titulo: string;
   etiqueta?: string;
-  children: React.ReactNode;
+  /** "Referencia" para explicaciones; otra palabra cuando el panel es para ajustar algo. */
+  antetitulo?: string;
+  /** Como funcion recibe `cerrar`, para los paneles que terminan en una accion (guardar). */
+  children: React.ReactNode | ((cerrar: () => void) => React.ReactNode);
 }) {
   const [abierto, setAbierto] = useState(false);
 
@@ -39,20 +44,20 @@ export function InfoAside({
       {etiqueta ? (
         <button
           onClick={() => setAbierto(true)}
-          className="inline-flex items-center gap-1.5 rounded-full border border-ink-300 px-2.5 py-0.5 text-xs font-medium text-ink-700 transition-colors hover:border-brand-500 hover:text-brand-700"
+          aria-expanded={abierto}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 underline decoration-brand-200 underline-offset-[3px] transition-colors hover:decoration-brand-600"
         >
-          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-current text-[10px] leading-none">
-            i
-          </span>
+          <Icono nombre="info" className="h-4 w-4 shrink-0" />
           {etiqueta}
         </button>
       ) : (
         <button
           onClick={() => setAbierto(true)}
-          aria-label={`Que significa: ${titulo}`}
-          className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-ink-400 text-[10px] leading-none text-ink-600 transition-colors hover:border-brand-500 hover:text-brand-700"
+          aria-label={`Qué significa: ${titulo}`}
+          aria-expanded={abierto}
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full text-ink-500 transition-colors hover:text-brand-700"
         >
-          i
+          <Icono nombre="info" className="h-4 w-4" />
         </button>
       )}
 
@@ -75,21 +80,24 @@ export function InfoAside({
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ duration: 0.32, ease: easeOutExpo }}
-              className="fixed inset-y-0 right-0 z-50 flex w-full max-w-sm flex-col border-l border-paper-300 bg-paper-50 shadow-xl"
+              className="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col border-l border-paper-300 bg-paper-50 shadow-[-24px_0_48px_-24px_rgb(20_30_45/0.25)]"
             >
-              <div className="flex items-center justify-between border-b border-paper-200 px-5 py-4">
-                <h2 className="font-display text-lg font-medium text-ink-950">{titulo}</h2>
+              <div className="flex items-start justify-between gap-4 border-b border-paper-200 px-5 py-4">
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-brand-600">{antetitulo}</p>
+                  <h2 className="font-display text-lg font-medium leading-snug text-ink-950">{titulo}</h2>
+                </div>
                 <button
                   onClick={() => setAbierto(false)}
                   aria-label="Cerrar"
                   className="rounded-full p-1.5 text-ink-600 transition-colors hover:bg-paper-200 hover:text-ink-950"
                 >
-                  <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M3 3l10 10M13 3L3 13" strokeLinecap="round" />
-                  </svg>
+                  <Icono nombre="cerrar" className="h-4 w-4" />
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+              <div className="flex-1 space-y-3 overflow-y-auto px-5 py-5 text-sm leading-relaxed text-ink-800">
+                {typeof children === "function" ? children(() => setAbierto(false)) : children}
+              </div>
             </motion.aside>
           </>
         )}

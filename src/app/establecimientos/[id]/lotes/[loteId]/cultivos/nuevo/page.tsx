@@ -36,7 +36,7 @@ export default function NuevoCultivoPage({
       <div className="mx-auto max-w-lg rounded-2xl border border-dashed border-paper-300 p-8 text-center">
         <p className="text-sm text-ink-700">Primero hay que dibujar la zona sobre el mapa del lote.</p>
         <Link
-          href={`/establecimientos/${id}/lotes/${loteId}`}
+          href={`/establecimientos/${id}/lotes/${loteId}/mapa`}
           className="mt-3 inline-block rounded-full border border-brand-500 px-4 py-2 text-sm font-medium text-brand-700"
         >
           Ir al mapa del lote

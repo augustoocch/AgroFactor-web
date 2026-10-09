@@ -1,5 +1,6 @@
 "use client";
 
+import { Icono } from "@/components/Icono";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { api, clasificarError } from "@/lib/api";
@@ -301,7 +302,7 @@ function FilaItemImpacto({
               title="Borrar fila"
               className="rounded-full border border-paper-300 px-2 py-0.5 text-[11px] text-ink-500 transition-colors hover:border-risk-alto hover:text-risk-alto disabled:opacity-50"
             >
-              ✕
+              <Icono nombre="cerrar" className="h-3 w-3" />
             </button>
           )}
         </td>

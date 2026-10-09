@@ -656,3 +656,145 @@ export interface ZonaSueloAplicada {
   procedencia: ProcedenciaDato;
   fuente: string;
 }
+
+// --- Reproduccion del anegamiento 2025 (imagenes Sentinel-2 reales) -----------------------------
+
+export interface LimitesGeograficos {
+  oeste: number;
+  sur: number;
+  este: number;
+  norte: number;
+}
+
+/** Una pasada de Sentinel-2 con el campo despejado, y el agua que se vio ese dia. */
+export interface EscenaReproduccion {
+  fecha: string;
+  semanaDesde: string;
+  semanaHasta: string;
+  satelite: string;
+  despejadoPct: number;
+  /** % de la superficie de los lotes con agua, descontada la que ya estaba antes del evento. */
+  anegadoPct: number;
+  anegadoHa: number;
+  aguaFueraDeLotesHa: number;
+  lluvia30DiasPreviosMm: number | null;
+  porLote: { loteId: string; anegadoPct: number | null }[];
+  /** GeoJSON (lon/lat) de las manchas de agua; null si no se vio agua. */
+  agua: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
+}
+
+export interface LoteReproduccion {
+  loteId: string;
+  nombre: string | null;
+  superficieHa: number;
+  huboAnegamiento: boolean;
+  maxPct: number | null;
+  maxHa: number | null;
+  fechaMax: string | null;
+  primeraFechaConAgua: string | null;
+  ultimaFechaConAgua: string | null;
+  diasConAgua: number;
+  escenasConAgua: number;
+  escenasObservadas: number;
+}
+
+export interface Reproduccion2025 {
+  disponible: boolean;
+  motivoNoDisponible?: string;
+  anio: number;
+  bounds: LimitesGeograficos;
+  resumen: {
+    huboAnegamiento: boolean;
+    maxPct: number;
+    maxHa: number;
+    fechaMax: string;
+    semanaCriticaDesde: string;
+    semanaCriticaHasta: string;
+    primeraFechaConAgua: string | null;
+    ultimaFechaConAgua: string | null;
+    diasConAgua: number;
+    superficieHa: number;
+    escenasDespejadas: number;
+    pasadasTotales: number;
+  };
+  serie: EscenaReproduccion[];
+  lotes: LoteReproduccion[];
+  aguaPrevia: GeoJSON.Polygon | GeoJSON.MultiPolygon | null;
+  lluvia: {
+    semanal: { desde: string; hasta: string; mm: number }[];
+    mensual: { mes: number; mm: number; normalMm: number | null }[];
+    totalMm: number | null;
+    normalAnualMm: number | null;
+    fuente: string;
+  };
+  metodo: {
+    indice: string;
+    resolucionM: number;
+    despejadoMinimoPct: number;
+    umbralAnegadoPct: number;
+    lineaDeBase: string;
+    fuente: string;
+  };
+}
+
+export interface ImagenReproduccion {
+  disponible: boolean;
+  motivoNoDisponible?: string;
+  fecha: string;
+  bounds: LimitesGeograficos;
+  dataUrl: string;
+  fuente: string;
+}
+
+/** Acuerdo celda por celda entre el agua observada y la simulada (ver backtesting_2025.comparar_celdas). */
+export interface ComparacionCeldas {
+  observadoPct: number | null;
+  simuladoPct: number | null;
+  /** De lo que el satelite vio con agua, que parte marco el modelo. */
+  deteccionPct: number | null;
+  /** De lo que el modelo marco con agua, que parte estaba seca. */
+  falsaAlarmaPct: number | null;
+  /** Aciertos / (aciertos + omisiones + falsas alarmas), de 0 a 1. */
+  csi: number | null;
+  celdas: number;
+}
+
+/** El modelo diario del sistema corrido sobre los 7 dias previos a una imagen, con el clima real de 2025. */
+export interface SimulacionReproduccion {
+  disponible: boolean;
+  motivoNoDisponible?: string;
+  fecha: string;
+  desde: string;
+  hasta: string;
+  /** IMAGEN_ANTERIOR: arranca con el agua de la foto despejada anterior. SECO: sin foto cercana. */
+  inicio: "IMAGEN_ANTERIOR" | "SECO";
+  fechaAnterior: string | null;
+  /** % de los lotes con agua al arrancar (en celdas del modelo). 0 si arranca seco. */
+  inicialPct: number;
+  celdaM: number;
+  umbralLaminaMm: number;
+  dias: {
+    fecha: string;
+    lluviaMm: number;
+    simuladoPct: number;
+    laminaMaximaMm: number;
+    condicionHumedad: string;
+    /** Saturacion del suelo medida (ERA5), en %; null si se dedujo de la lluvia. */
+    saturacionSueloPct: number | null;
+  }[];
+  diaPicoSimulado: string | null;
+  total: ComparacionCeldas;
+  /** Control: suponer que el agua quedo igual que en la foto anterior. Null si arranco seco. */
+  persistencia: ComparacionCeldas | null;
+  porLote: ({ loteId: string; nombre: string | null } & ComparacionCeldas)[];
+  /** Isobandas de lamina simulada (mm), desde el umbral de anegamiento. */
+  bandasSimuladas: BandaMeteorologica[];
+  /** true si se corrio con otra lluvia total (escenario) en vez de la registrada. */
+  escenario: boolean;
+  lluviaRealMm: number;
+  diasConLluvia: string[];
+  lluviaSemanaMm: number;
+  lluvia30DiasMm: number;
+  diagnostico: string;
+  fuente: string;
+}

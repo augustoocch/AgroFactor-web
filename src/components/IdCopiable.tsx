@@ -80,15 +80,14 @@ export function IdCopiable({ valor }: { valor: string }) {
   }
 
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-xs text-ink-600">ID</span>
-      <code ref={codigo} className="select-all rounded-md bg-paper-200 px-2 py-0.5 font-mono text-xs text-ink-800">
+    <div className="flex flex-wrap items-center gap-2">
+      <code ref={codigo} className="select-all rounded-md border border-paper-300 bg-paper-50 px-3 py-1.5 font-mono text-sm text-ink-900">
         {valor}
       </code>
       <button
         onClick={copiar}
         aria-label="Copiar el ID del establecimiento"
-        className="relative rounded-md border border-paper-300 px-2 py-0.5 text-xs font-medium text-ink-600 transition-colors hover:border-brand-500 hover:text-brand-700"
+        className="relative rounded-full border border-brand-500 px-3.5 py-1.5 text-sm font-medium text-brand-700 transition-colors hover:bg-brand-100"
       >
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
@@ -97,9 +96,9 @@ export function IdCopiable({ valor }: { valor: string }) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.18, ease: easeOutExpo }}
-            className={`block whitespace-nowrap ${resultado === "copiado" ? "text-risk-bajo" : ""}`}
+            className={`block whitespace-nowrap ${resultado === "copiado" ? "text-risk-bajo-ink" : ""}`}
           >
-            {resultado === "copiado" ? "Copiado" : resultado === "copialo-a-mano" ? "Copialo con Ctrl+C" : "Copiar"}
+            {resultado === "copiado" ? "Copiado" : resultado === "copialo-a-mano" ? "Copialo con Ctrl+C" : "Copiar código"}
           </motion.span>
         </AnimatePresence>
       </button>

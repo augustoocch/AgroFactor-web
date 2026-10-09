@@ -31,11 +31,11 @@ export default function EstablecimientosPage() {
   function buscar() {
     const limpio = idBusqueda.trim();
     if (!limpio) {
-      setErrorBusqueda("Pega el ID que te compartio el productor.");
+      setErrorBusqueda("Pegá el código que te compartió el productor.");
       return;
     }
     if (!FORMATO_UUID.test(limpio)) {
-      setErrorBusqueda("Ese no es un ID valido. Tiene 36 caracteres con guiones, como 3f2a9c10-4b7e-4d81-9a3c-6e5f0b1d2c34.");
+      setErrorBusqueda("Ese código no es válido. Tiene 36 caracteres con guiones, como 3f2a9c10-4b7e-4d81-9a3c-6e5f0b1d2c34.");
       return;
     }
     setErrorBusqueda(null);
@@ -69,7 +69,7 @@ export default function EstablecimientosPage() {
           href="/establecimientos/nuevo"
           className="rounded-full bg-brand-700 px-5 py-2.5 text-sm font-medium text-paper-50 shadow-sm transition-colors hover:bg-brand-600"
         >
-          + Nuevo establecimiento
+          Nuevo establecimiento
         </Link>
       </motion.div>
 
@@ -79,11 +79,11 @@ export default function EstablecimientosPage() {
           animate="visible"
           custom={1}
           variants={revealVariants}
-          className="rounded-2xl border border-brand-200 bg-brand-100/40 p-5"
+          className="rounded-xl border border-brand-200 bg-brand-100/40 p-5"
         >
           <p className="text-sm text-ink-800">
-            Como <strong>{sesion?.rol === "ASESOR" ? "asesor" : "administrador"}</strong> podes acceder a
-            cualquier establecimiento por su ID — por ejemplo, el que te comparta el productor.
+            Como <strong>{sesion?.rol === "ASESOR" ? "asesor" : "administrador"}</strong> podés abrir
+            el establecimiento de un productor con el código que te comparta desde “Datos y acceso”.
           </p>
           <div className="mt-3 flex gap-2">
             <input
@@ -93,7 +93,7 @@ export default function EstablecimientosPage() {
                 if (errorBusqueda) setErrorBusqueda(null);
               }}
               onKeyDown={(e) => e.key === "Enter" && buscar()}
-              placeholder="ID del establecimiento"
+              placeholder="Código del establecimiento"
               aria-invalid={errorBusqueda ? true : undefined}
               className={`flex-1 rounded-lg border bg-paper-50 px-3 py-2 font-mono text-sm text-ink-950 outline-none focus:border-brand-500 ${
                 errorBusqueda ? "border-risk-alto" : "border-paper-300"
@@ -117,7 +117,7 @@ export default function EstablecimientosPage() {
           <motion.li key={e.id} initial="hidden" animate="visible" custom={i + 2} variants={revealVariants}>
             <Link
               href={`/establecimientos/${e.id}`}
-              className="group block rounded-2xl border border-paper-300 bg-paper-50 p-5 transition-all hover:-translate-y-0.5 hover:border-brand-500 hover:shadow-[0_8px_24px_-12px_var(--color-brand-500)]"
+              className="group block rounded-xl border border-paper-300 bg-paper-50 p-5 transition-colors hover:border-brand-500"
             >
               <div className="flex items-start justify-between">
                 <p className="font-display text-lg font-medium text-ink-950">{e.nombre}</p>
@@ -128,8 +128,8 @@ export default function EstablecimientosPage() {
               <p className="mt-1.5 text-sm text-ink-600">
                 {e.partido}, {e.provincia} · tenencia {e.tipoTenencia.toLowerCase()}
               </p>
-              <p className="mt-4 text-sm font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100">
-                Ver plan de accion →
+              <p className="mt-4 text-sm font-medium text-brand-600 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                Abrir el panorama
               </p>
             </Link>
           </motion.li>
@@ -137,8 +137,8 @@ export default function EstablecimientosPage() {
       </ul>
 
       {establecimientos?.length === 0 && (
-        <p className="rounded-2xl border border-dashed border-paper-300 p-8 text-center text-sm text-ink-600">
-          Todavia no cargaste ningun establecimiento.
+        <p className="rounded-xl border border-dashed border-paper-300 p-8 text-center text-sm text-ink-600">
+          Todavía no cargaste ningún establecimiento.
         </p>
       )}
     </div>

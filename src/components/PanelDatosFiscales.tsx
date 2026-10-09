@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, clasificarError } from "@/lib/api";
 import { useToast } from "@/lib/toast-context";
+import { boton } from "@/lib/estilos";
 import type { Establecimiento } from "@/lib/types";
 
 /**
@@ -56,23 +57,18 @@ function FormularioDatosFiscales({
   const cambiaron = cuit !== (establecimiento.cuit ?? "") || renspa !== (establecimiento.renspa ?? "");
 
   return (
-    <div className="rounded-2xl border border-paper-300 bg-paper-50 p-6">
-      <p className="text-sm uppercase tracking-wide text-brand-600">Identificación del productor</p>
-      <h2 className="font-display text-lg font-medium text-ink-950">CUIT y RENSPA</h2>
-      <p className="mt-1 max-w-2xl text-sm text-ink-600">
-        Van en el encabezado del informe de emergencia agropecuaria: sin esto, la denuncia ante Ley 26.509 no
-        identifica al productor ni al predio.
-      </p>
+    <div>
       {faltanDatos && (
-        <p className="mt-2 rounded-lg bg-risk-alto-bg px-3 py-1.5 text-xs text-risk-alto">
+        <p className="mb-4 rounded-lg bg-clay-100/70 px-3 py-2 text-sm text-ink-800">
           Falta cargar {!establecimiento.cuit && !establecimiento.renspa ? "el CUIT y el RENSPA" : !establecimiento.cuit ? "el CUIT" : "el RENSPA"}.
         </p>
       )}
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="block text-xs font-medium text-ink-700">CUIT del productor</label>
+          <label htmlFor="cuit" className="block text-sm font-medium text-ink-800">CUIT del productor</label>
           <input
+            id="cuit"
             value={cuit}
             onChange={(e) => setCuit(e.target.value)}
             placeholder="20-12345678-9"
@@ -80,8 +76,9 @@ function FormularioDatosFiscales({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-ink-700">RENSPA</label>
+          <label htmlFor="renspa" className="block text-sm font-medium text-ink-800">RENSPA</label>
           <input
+            id="renspa"
             value={renspa}
             onChange={(e) => setRenspa(e.target.value)}
             placeholder="20.123.4.56789/A0"
@@ -93,7 +90,7 @@ function FormularioDatosFiscales({
       <button
         onClick={() => guardar.mutate()}
         disabled={guardar.isPending || !cambiaron}
-        className="mt-3 rounded-full bg-brand-700 px-4 py-1.5 text-sm font-medium text-paper-50 shadow-sm transition-colors hover:bg-brand-600 disabled:opacity-50"
+        className={`${boton.secundario} mt-4`}
       >
         {guardar.isPending ? "Guardando..." : "Guardar"}
       </button>

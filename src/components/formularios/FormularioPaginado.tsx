@@ -1,5 +1,6 @@
 "use client";
 
+import { Icono } from "@/components/Icono";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { easeOutExpo } from "@/lib/motion";
@@ -55,7 +56,7 @@ export function FormularioPaginado({
           href={volverA}
           className="inline-flex items-center gap-1.5 text-sm text-ink-600 transition-colors hover:text-brand-700"
         >
-          <span aria-hidden>←</span> Volver al lote
+          <Icono nombre="izquierda" className="h-4 w-4" /> Volver al lote
         </Link>
         <h1 className="mt-2 font-display text-xl font-medium text-ink-950">{titulo}</h1>
         <p className="text-sm text-ink-600">{subtitulo}</p>
@@ -82,7 +83,7 @@ export function FormularioPaginado({
                     faltante ? "bg-clay-500 text-paper-50" : p.completo ? "bg-risk-bajo text-paper-50" : "bg-paper-300 text-ink-700"
                   }`}
                 >
-                  {p.completo && !faltante ? "✓" : i + 1}
+                  {p.completo && !faltante ? <Icono nombre="check" className="h-2.5 w-2.5" /> : i + 1}
                 </span>
                 {p.titulo}
               </button>

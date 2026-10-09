@@ -76,13 +76,12 @@ export function PanelZonasSuelo({ loteId, anilloPendiente, onAnilloConsumido, on
   const cobertura = zonas.reduce((suma, z) => suma + (z.fraccionDelLote ?? 0), 0);
 
   return (
-    <section className="rounded-2xl border border-paper-300 bg-paper-50 p-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm uppercase tracking-wide text-brand-600">Suelo</p>
-          <h2 className="font-display text-lg font-medium text-ink-950">Sectores de suelo</h2>
-        </div>
-        <InfoModal titulo="Para qué sirve cargar el suelo" etiqueta="¿Por qué me lo pide?">
+    <section>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-ink-600">
+          Opcional. Mejora el cálculo de cuánta lluvia absorbe el lote antes de que el agua empiece a correr.
+        </p>
+        <InfoModal titulo="Para qué sirve cargar el suelo" etiqueta="Por qué conviene cargarlo">
           <p>
             El sistema tiene que saber cuánta lluvia absorbe tu campo antes de que empiece a correr
             el agua. Sin dato asume el peor caso: suelo sódico que casi no absorbe, que es el
@@ -157,7 +156,7 @@ export function PanelZonasSuelo({ loteId, anilloPendiente, onAnilloConsumido, on
       {zonas.length > 0 && (
         <ul className="mt-4 space-y-3">
           {zonas.map((zona) => (
-            <li key={zona.id} className="rounded-xl border border-paper-300 bg-paper-100/50 p-4">
+            <li key={zona.id} className="rounded-xl border border-paper-300 bg-paper-50 p-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium text-ink-900">{zona.nombre}</p>

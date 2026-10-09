@@ -2,24 +2,29 @@
 
 import { useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { use } from "react";
+import { use, useState } from "react";
+import { EncabezadoPantalla } from "@/components/EncabezadoPantalla";
 import { ListaLotes } from "@/components/ListaLotes";
+import { NuevoLoteForm } from "@/components/NuevoLoteForm";
 import { api } from "@/lib/api";
-import { useScoresRiesgo } from "@/lib/hooks";
-import type { Activo, Lote } from "@/lib/types";
+import { useReubicarActivo, useScoresRiesgo } from "@/lib/hooks";
+import type { Activo, Coordenada, Lote } from "@/lib/types";
 
 const MapaEstablecimiento = dynamic(
   () => import("@/components/MapaEstablecimiento").then((m) => m.MapaEstablecimiento),
-  { ssr: false },
+  { ssr: false, loading: () => <div className="h-[52vh] w-full animate-pulse rounded-xl bg-paper-200" /> },
 );
 
 /**
- * Pantalla general de lotes: aca se ve el conjunto (mapa de todos los lotes + lista). El detalle
- * de un lote vive en /lotes/[loteId] y ahi se ve unicamente ese lote.
+ * Lotes: el unico lugar donde se dibuja un lote nuevo, y la puerta a cada lote.
+ *
+ * Antes el mapa editable estaba en "Resumen" y esta pantalla tenia uno de solo lectura con un
+ * texto que decia "para dibujar un lote, anda a Resumen". Crear lotes y listarlos es una sola
+ * responsabilidad; ahora esta junta.
  */
 export default function LotesPage({ params }: PageProps<"/establecimientos/[id]/lotes">) {
   const { id } = use(params);
+  const [anilloNuevoLote, setAnilloNuevoLote] = useState<Coordenada[] | null>(null);
 
   const { data: lotes = [], isLoading } = useQuery({
     queryKey: ["lotes", id],
@@ -32,39 +37,38 @@ export default function LotesPage({ params }: PageProps<"/establecimientos/[id]/
   });
 
   const scorePorLote = useScoresRiesgo(lotes);
+  const reubicarActivo = useReubicarActivo(id);
 
   return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-sm uppercase tracking-wide text-brand-600">Manejo por lote</p>
-        <h2 className="font-display text-lg font-medium text-ink-950">Lotes del establecimiento</h2>
-        <p className="mt-1 text-sm text-ink-600">
-          Vista general de todos los lotes. Tocá uno para abrir su pantalla propia (mapa solo de ese lote, zonas de
-          cultivo, clima y simulacion de anegamiento), o usá{" "}
-          <span className="font-medium text-brand-700">+ Cultivo</span> para dibujar una zona sembrada dentro de él.
-          Para dibujar un lote nuevo o ubicar un activo, andá a{" "}
-          <Link href={`/establecimientos/${id}`} className="underline underline-offset-2 hover:text-brand-700">
-            Resumen
-          </Link>
-          .
-        </p>
-      </div>
+    <div>
+      <EncabezadoPantalla
+        segmento="lotes"
+        titulo="Lotes"
+        descripcion="Dibujá cada lote sobre el mapa con el botón del mapa. Adentro de cada lote se cargan sus cultivos, sus activos y su suelo."
+      />
 
-      {isLoading && <p className="text-sm text-ink-600">Cargando...</p>}
+      <MapaEstablecimiento
+        establecimientoId={id}
+        lotes={lotes}
+        activos={activos}
+        scorePorLote={scorePorLote}
+        onLoteDibujado={setAnilloNuevoLote}
+        onActivoMovido={(activo, coordenada) => reubicarActivo.mutate({ activo, coordenada })}
+        alto="h-[52vh]"
+      />
 
-      {!isLoading && lotes.length > 0 && (
-        <MapaEstablecimiento
-          establecimientoId={id}
-          lotes={lotes}
-          activos={activos}
-          scorePorLote={scorePorLote}
-          onLoteDibujado={() => {}}
-          soloLectura
-          alto="h-[38vh]"
-        />
-      )}
+      <section className="mt-10">
+        <h2 className="mb-4 font-display text-lg font-medium text-ink-950">
+          {lotes.length === 1 ? "Un lote" : `${lotes.length} lotes`}
+        </h2>
+        {isLoading ? (
+          <p className="text-sm text-ink-600">Cargando...</p>
+        ) : (
+          <ListaLotes establecimientoId={id} lotes={lotes} scorePorLote={scorePorLote} />
+        )}
+      </section>
 
-      {!isLoading && <ListaLotes establecimientoId={id} lotes={lotes} scorePorLote={scorePorLote} />}
+      <NuevoLoteForm establecimientoId={id} anillo={anilloNuevoLote} onCerrar={() => setAnilloNuevoLote(null)} />
     </div>
   );
 }
