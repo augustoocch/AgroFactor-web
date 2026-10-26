@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { use, useState } from "react";
 import { ConfirmarBorrado } from "@/components/ConfirmarBorrado";
 import { EncabezadoPantalla } from "@/components/EncabezadoPantalla";
-import { IdCopiable } from "@/components/IdCopiable";
+import { PanelAccesos } from "@/components/PanelAccesos";
 import { PanelDatosFiscales } from "@/components/PanelDatosFiscales";
 import { api, clasificarError } from "@/lib/api";
 import { boton } from "@/lib/estilos";
+import { puede } from "@/lib/permisos";
 import { useToast } from "@/lib/toast-context";
 import type { Activo, Establecimiento, Lote } from "@/lib/types";
 
@@ -91,21 +92,31 @@ export default function AjustesPage({ params }: PageProps<"/establecimientos/[id
           <PanelDatosFiscales establecimientoId={id} />
         </Bloque>
 
-        <Bloque
-          titulo="Acceso de tu asesor"
-          descripcion="Para que un asesor técnico o un administrador vea este establecimiento, compartile este código. Lo pega en su pantalla de establecimientos."
-        >
-          <IdCopiable valor={establecimiento.id} />
-        </Bloque>
+        {puede(establecimiento.miAcceso, "gestionarAsesores") ? (
+          <Bloque
+            titulo="Quién más accede"
+            descripcion="Solo entra quien vos invitás, con un link que le llega por email. Podés revocarlo cuando quieras."
+          >
+            <PanelAccesos establecimientoId={id} miAcceso={establecimiento.miAcceso} />
+          </Bloque>
+        ) : (
+          <Bloque titulo="Tu acceso">
+            <p className="text-sm text-ink-700">
+              Estás como asesor técnico: ves y cargás lo mismo que el titular. Los accesos y el borrado los gestiona el titular.
+            </p>
+          </Bloque>
+        )}
 
-        <Bloque
-          titulo="Borrar el establecimiento"
-          descripcion="Se borran sus lotes, cultivos, activos, evaluaciones, planes e informes. No se puede deshacer."
-        >
-          <button onClick={() => setConfirmandoBorrado(true)} className={boton.peligro}>
-            Borrar establecimiento
-          </button>
-        </Bloque>
+        {puede(establecimiento.miAcceso, "borrar") && (
+          <Bloque
+            titulo="Borrar el establecimiento"
+            descripcion="Se borran sus lotes, cultivos, activos, evaluaciones, planes e informes. No se puede deshacer."
+          >
+            <button onClick={() => setConfirmandoBorrado(true)} className={boton.peligro}>
+              Borrar establecimiento
+            </button>
+          </Bloque>
+        )}
       </div>
 
       <ConfirmarBorrado

@@ -68,7 +68,7 @@ export const GRUPOS: GrupoNavegacion[] = [
     secciones: [
       { segmento: "lotes", etiqueta: "Lotes", icono: "lotes", proposito: "Dibujar lotes y cargar lo que tienen" },
       { segmento: "activos", etiqueta: "Activos", icono: "activos", proposito: "Hacienda, maquinaria e instalaciones" },
-      { segmento: "ajustes", etiqueta: "Datos y acceso", icono: "ajustes", proposito: "CUIT, RENSPA y acceso del asesor" },
+      { segmento: "ajustes", etiqueta: "Datos y acceso", icono: "ajustes", proposito: "CUIT, RENSPA y quién más accede" },
     ],
   },
 ];

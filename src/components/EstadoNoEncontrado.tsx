@@ -19,12 +19,16 @@ export function EstadoNoEncontrado({ error, onReintentar }: { error: unknown; on
       ? {
           titulo: "No encontramos ese establecimiento",
           detalle:
-            "Revisa que el ID este completo y sin espacios. Es el identificador que el productor copia desde su establecimiento.",
+            "Puede que lo hayan borrado. Volvé a tus establecimientos y abrilo desde ahí.",
         }
       : status === 403
         ? {
             titulo: "No tenes acceso a este establecimiento",
-            detalle: "El ID existe, pero tu usuario no puede verlo. Pediselo a quien lo administra.",
+            // El backend explica el caso del campo cedido; si no, el acceso se pide al titular.
+            detalle:
+              error instanceof Error && error.message.includes("cedido")
+                ? error.message
+                : "Para verlo, su titular tiene que invitarte desde “Datos y acceso”. Si ya te invitó, abrí el link del email.",
           }
         : {
             titulo: "No se pudo cargar el establecimiento",

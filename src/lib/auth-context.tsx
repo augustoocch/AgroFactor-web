@@ -1,12 +1,18 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import type { AuthResponse, Rol } from "@/lib/types";
+import { api, ApiError } from "@/lib/api";
+import type { AuthResponse, Perfil } from "@/lib/types";
 
 interface Sesion {
   email: string;
   nombre: string;
-  rol: Rol;
+  perfil: Perfil;
+  adminPlataforma: boolean;
+}
+
+function aSesion(auth: AuthResponse): Sesion {
+  return { email: auth.email, nombre: auth.nombre, perfil: auth.perfil, adminPlataforma: auth.adminPlataforma };
 }
 
 interface AuthContextValue {
@@ -33,10 +39,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (guardada) setSesion(JSON.parse(guardada));
     setCargando(false);
+    // Lo guardado puede estar viejo (sesiones de antes del cambio de roles, o un permiso de
+    // plataforma que se quito): se refresca contra el servidor, que es quien decide.
+    if (window.localStorage.getItem(STORAGE_KEY_TOKEN)) {
+      api
+        .get<AuthResponse>("/auth/me")
+        .then((me) => {
+          const actual = aSesion(me);
+          window.localStorage.setItem(STORAGE_KEY_SESION, JSON.stringify(actual));
+          setSesion(actual);
+        })
+        .catch((e) => {
+          // 401: api.ts ya limpio el storage; aca se baja el estado. Otro error (red): queda la guardada.
+          if (e instanceof ApiError && e.status === 401) setSesion(null);
+        });
+    }
   }, []);
 
   const iniciarSesion = useCallback((auth: AuthResponse) => {
-    const nuevaSesion: Sesion = { email: auth.email, nombre: auth.nombre, rol: auth.rol };
+    const nuevaSesion = aSesion(auth);
     window.localStorage.setItem(STORAGE_KEY_TOKEN, auth.token);
     window.localStorage.setItem(STORAGE_KEY_SESION, JSON.stringify(nuevaSesion));
     setSesion(nuevaSesion);

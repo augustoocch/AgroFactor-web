@@ -112,6 +112,21 @@ const TRAZOS = {
   ),
   mas: <path d="M12 5v14M5 12h14" />,
   check: <path d="m5 12.5 4.5 4.5L19 7.5" strokeLinejoin="round" />,
+  dibujar: (
+    <>
+      <path d="M5 7 15 4.5l4.5 9-8 6L5 7Z" strokeLinejoin="round" />
+      <circle cx="5" cy="7" r="1.6" fill="currentColor" />
+      <circle cx="15" cy="4.5" r="1.6" fill="currentColor" />
+      <circle cx="19.5" cy="13.5" r="1.6" fill="currentColor" />
+    </>
+  ),
+  coordenadas: (
+    <>
+      <circle cx="12" cy="12" r="6.5" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+      <path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" />
+    </>
+  ),
 } as const;
 
 export type NombreIcono = keyof typeof TRAZOS;

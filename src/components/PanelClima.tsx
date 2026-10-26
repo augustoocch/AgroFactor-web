@@ -159,9 +159,11 @@ export function PanelClima({
                 <Tooltip texto="Pasados los 300 mm, el suelo de la zona suele estar cerca de saturarse y absorbe mucho menos.">
                   <span>Últimos 90 días</span>
                 </Tooltip>
-                <span className="font-mono">{pronostico.precipitacionUltimos90DiasMm.toFixed(0)} / {UMBRAL_SATURACION_90D_MM} mm</span>
+                <span className="font-mono">
+                  {pronostico.precipitacionUltimos90DiasMm != null ? pronostico.precipitacionUltimos90DiasMm.toFixed(0) : "Sin dato"} / {UMBRAL_SATURACION_90D_MM} mm
+                </span>
               </div>
-              <BarraProgreso valor={pronostico.precipitacionUltimos90DiasMm} umbral={UMBRAL_SATURACION_90D_MM} color="var(--color-brand-600)" />
+              <BarraProgreso valor={pronostico.precipitacionUltimos90DiasMm ?? 0} umbral={UMBRAL_SATURACION_90D_MM} color="var(--color-brand-600)" />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-ink-700">

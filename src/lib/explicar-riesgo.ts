@@ -97,13 +97,13 @@ export function explicarFactores(
 
   renglones.push({
     etiqueta: "Lluvia de los últimos 90 días",
-    lectura: `${factores.precipitacionRecienteMm.toFixed(0)} mm`,
+    lectura: factores.precipitacionRecienteMm != null ? `${factores.precipitacionRecienteMm.toFixed(0)} mm` : "Sin dato",
     ayuda: "Lo que ya llovió sobre el lote. Sobre un suelo cargado, la misma lluvia rinde más agua en superficie.",
   });
 
   renglones.push({
     etiqueta: "Lluvia esperada en los próximos días",
-    lectura: `${factores.precipitacionPronosticadaMm.toFixed(0)} mm`,
+    lectura: factores.precipitacionPronosticadaMm != null ? `${factores.precipitacionPronosticadaMm.toFixed(0)} mm` : "Sin dato",
     ayuda: "Lo que se espera que llueva sobre el lote según el pronóstico.",
   });
 

@@ -1,6 +1,14 @@
 /** Tipos espejo de los DTOs de api-core (com.uade.elagua.dto.*). */
 
-export type Rol = "PRODUCTOR" | "ASESOR" | "ADMINISTRADOR";
+/** Como dice usar AgroFactor al registrarse: adapta el onboarding, no da permisos. */
+export type Perfil = "PRODUCTOR" | "ASESOR" | "ADMINISTRADOR";
+
+/** Relacion del usuario con un establecimiento (ver PermisosEstablecimiento en api-core). */
+export type MiAcceso = "PROPIETARIO" | "PROPIETARIO_CEDIDO" | "ADMINISTRADOR" | "ASESOR" | "NINGUNO";
+
+export type RolAcceso = "ASESOR" | "ADMINISTRADOR";
+
+export type EstadoAcceso = "PENDIENTE" | "ACTIVO" | "SUSPENDIDO" | "RECHAZADO" | "REVOCADO" | "FINALIZADO" | "VENCIDA";
 
 export type PerfilProductivo = "AGRICOLA" | "GANADERO" | "TAMBO" | "MIXTO";
 
@@ -25,7 +33,8 @@ export interface AuthResponse {
   token: string;
   email: string;
   nombre: string;
-  rol: Rol;
+  perfil: Perfil;
+  adminPlataforma: boolean;
 }
 
 export interface PesosPrioridad {
@@ -46,6 +55,52 @@ export interface Establecimiento {
   /** Sin esto el informe de emergencia agropecuaria no identifica al productor ante SENASA. */
   cuit: string | null;
   renspa: string | null;
+  miAcceso: MiAcceso;
+  /** Solo para el propietario de un campo cedido y para su administrador. */
+  cesion: CesionResumen | null;
+}
+
+export interface CesionResumen {
+  administradorNombre: string;
+  administradorEmail: string;
+  /** ISO yyyy-mm-dd; null = sin fecha de fin. */
+  hasta: string | null;
+}
+
+export interface Acceso {
+  id: string;
+  email: string;
+  nombre: string | null;
+  rol: RolAcceso;
+  estado: EstadoAcceso;
+  otorgadoPor: "PROPIETARIO" | "ADMINISTRADOR";
+  fechaFinCesion: string | null;
+  creadoEn: string;
+  invitacionVenceEn: string;
+  aceptadoEn: string | null;
+}
+
+export interface AccesosEstablecimiento {
+  miAcceso: MiAcceso;
+  propietario: string;
+  accesos: Acceso[];
+}
+
+export interface InvitacionCreada {
+  acceso: Acceso;
+  link: string;
+  emailEnviado: boolean;
+}
+
+export interface Invitacion {
+  establecimientoNombre: string;
+  partido: string;
+  invitadoPor: string | null;
+  emailInvitadoEnmascarado: string;
+  rol: RolAcceso;
+  estado: EstadoAcceso;
+  fechaFinCesion: string | null;
+  venceEn: string;
 }
 
 export interface Coordenada {
@@ -180,8 +235,9 @@ export interface EvaluacionRiesgo {
     elevacionPercentil: number | null;
     antecedentesHistoricos: number;
     tipoSueloScore: number;
-    precipitacionRecienteMm: number;
-    precipitacionPronosticadaMm: number;
+    /** null si ninguna fuente de lluvia respondio (no es "0 mm"). */
+    precipitacionRecienteMm: number | null;
+    precipitacionPronosticadaMm: number | null;
     // Pueden faltar si NOAA CPC (ENSO) o el ensemble de Open-Meteo no respondieron en el
     // momento de la evaluacion — ver TFI/analisis-brechas-tecnicas-risk-engine-oceano-biomasa.md.
     moduladorEnso: number | null;
@@ -222,7 +278,7 @@ export interface ClimaActual {
 
 export interface Pronostico {
   dias: PronosticoDiario[];
-  precipitacionUltimos90DiasMm: number;
+  precipitacionUltimos90DiasMm: number | null;
   actual: ClimaActual | null;
 }
 
@@ -324,12 +380,33 @@ export interface Alerta {
   loteId: string;
   loteNombre: string;
   fecha: string;
+  /** Cuando la emitio la vigilancia (ISO, UTC). */
+  generadaEn: string;
   nivel: NivelAlerta;
   laminaMaximaEsperadaMm: number;
   superficieAnegadaPct: number;
   horasHastaPico: number;
   lluviaPronosticadaMm: number;
   mensaje: string;
+}
+
+/** Una corrida de la vigilancia sobre el campo: la de la madrugada o la pedida a mano. */
+export interface RevisionAlertas {
+  id: string;
+  origen: "AUTOMATICA" | "MANUAL";
+  estado: "PENDIENTE" | "CORRIENDO" | "TERMINADA" | "FALLIDA";
+  lotesTotal: number;
+  lotesHechos: number;
+  lotesConError: number;
+  alertasEmitidas: number;
+  error: string | null;
+  iniciadaEn: string;
+  terminadaEn: string | null;
+}
+
+export interface EstadoRevisionAlertas {
+  enCurso: RevisionAlertas | null;
+  ultima: RevisionAlertas | null;
 }
 
 export interface Justificacion {
@@ -797,4 +874,136 @@ export interface SimulacionReproduccion {
   lluvia30DiasMm: number;
   diagnostico: string;
   fuente: string;
+}
+
+// --- Sandbox de calibracion (risk-engine/app/calibracion.py) ---------------------------------
+
+export type EstadoCorrida = "PENDIENTE" | "CORRIENDO" | "TERMINADA" | "FALLIDA";
+
+export interface FactoresCalibracion {
+  topografia: number | null;
+  suelo: number | null;
+  /** Lo mayor entre lo declarado y la historia de agua JRC 1984-2021 del lote. */
+  antecedentes: number | null;
+  humedad: number | null;
+  escorrentia: number | null;
+  saturacion: number | null;
+  enso: number | null;
+}
+
+/** Un lote sintetico evaluado por el motor completo. Con `error` el resto no viene. */
+export interface ResultadoLoteCalibracion {
+  id: string;
+  nombre?: string;
+  partido?: string;
+  superficieHa?: number;
+  /** Pares (lat, lon). */
+  anillo?: [number, number][];
+  error?: string;
+  observado?: {
+    huboAnegamiento: boolean;
+    maxPct: number | null;
+    fechaMax: string | null;
+    diasConAgua: number;
+    escenasObservadas: number;
+  };
+  riesgo?: {
+    score: number;
+    factores: FactoresCalibracion;
+    infiltracionFinalMmDia: number;
+    suelo?: { procedencia: string; grupoDominante: string; curvaNumero: number };
+  };
+  /** El score el 1 de cada mes contra el agua de los 60 dias siguientes. */
+  mensual?: {
+    fecha: string;
+    score: number;
+    aguaMaxSiguientePct: number;
+    anegadoSiguiente: boolean;
+    conAguaAlEvaluar: boolean;
+  }[];
+  simulaciones?: {
+    fecha: string;
+    anterior: string;
+    observadoPct: number | null;
+    simuladoPct: number | null;
+    csiModelo: number | null;
+    csiPersistencia: number | null;
+  }[];
+  duracion?: {
+    observadaMin: number;
+    /** null: al final del periodo seguia con agua. */
+    observadaMax: number | null;
+    estimada: { diasMin: number; diasMax: number; regimen: string } | null;
+  } | null;
+  perdida?: { conAguaObservada: number | null; conAguaSimulada: number | null };
+}
+
+export interface ResumenCalibracion {
+  lotes: number;
+  lotesEvaluados: number;
+  lotesConError: { id: string; error: string }[];
+  versionMotor: string;
+  huellaMotor: string;
+  lotesAnegados?: number;
+  riesgo?: {
+    auc: number | null;
+    aucIntervalo90: [number, number] | null;
+    paresBienOrdenados: number | null;
+    paresBienOrdenadosIntervalo90: [number, number] | null;
+    metaParesBienOrdenados: number;
+    spearman: number | null;
+    aucPorFactor: Record<keyof FactoresCalibracion, number | null>;
+    fiabilidad: { tercil: string; lotes: number; scoreMedio: number; fraccionAnegada: number }[];
+  };
+  simulacion?: {
+    pares: number;
+    csiModeloMedio: number | null;
+    csiPersistenciaMedio: number | null;
+    fraccionQueGanaAPersistencia: number | null;
+  };
+  duracion?: { lotes: number; aciertoFranja: number | null; subestima: number | null };
+  perdida?: { lotes: number; diferenciaMediaPuntos: number | null; diferenciaAbsolutaMediaPuntos: number | null };
+  /** Lotes y anegados por partido: para ver si la muestra cubre la cuenca. */
+  porPartido?: { partido: string; lotes: number; anegados: number; scoreMedio: number | null }[];
+  pesos?: PesosSugeridos | null;
+  riesgoMensual?: {
+    casos: number;
+    casosAnegados: number;
+    auc: number | null;
+    aucIntervalo90: [number, number] | null;
+    aucAnticipacion: number | null;
+    casosAnticipacion: number;
+    paresBienOrdenadosPorMes: number | null;
+    aucPorFactor: Record<keyof FactoresCalibracion, number | null>;
+    porMes: { fecha: string; casos: number; anegados: number; auc: number | null }[];
+    pesos: PesosSugeridos | null;
+  } | null;
+}
+
+export interface PesosSugeridos {
+  factores: (keyof FactoresCalibracion)[];
+  actuales: number[];
+  sugeridos: number[];
+  aucActualMismosLotes: number | null;
+  aucSugeridoFueraDeMuestra: number | null;
+  casos?: number;
+  nota: string;
+}
+
+export interface CorridaCalibracion {
+  id: string;
+  anio: number;
+  cantidadLotes: number;
+  semilla: number;
+  versionMotor: string | null;
+  huellaMotor: string | null;
+  estado: EstadoCorrida;
+  lotesHechos: number;
+  iniciadaPor: string | null;
+  iniciadaEn: string;
+  terminadaEn: string | null;
+  error: string | null;
+  resumen: ResumenCalibracion | null;
+  /** Solo en el detalle. */
+  resultados: ResultadoLoteCalibracion[] | null;
 }

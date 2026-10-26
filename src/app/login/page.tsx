@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { use, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { api, ApiError } from "@/lib/api";
@@ -20,7 +20,9 @@ const schema = z.object({
 
 type FormValues = z.infer<typeof schema>;
 
-export default function LoginPage() {
+export default function LoginPage({ searchParams }: PageProps<"/login">) {
+  const { invitacion } = use(searchParams);
+  const tokenInvitacion = typeof invitacion === "string" ? invitacion : null;
   const { iniciarSesion } = useAuth();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export default function LoginPage() {
     try {
       const auth = await api.post<AuthResponse>("/auth/login", values);
       iniciarSesion(auth);
-      router.replace("/establecimientos");
+      router.replace(tokenInvitacion ? `/invitaciones/${tokenInvitacion}` : "/establecimientos");
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "No se pudo iniciar sesion");
     }
@@ -99,7 +101,7 @@ export default function LoginPage() {
 
           <p className="text-center text-sm text-ink-600">
             No tenes cuenta?{" "}
-            <Link href="/register" className="font-medium text-brand-700 underline underline-offset-2">
+            <Link href={tokenInvitacion ? `/register?invitacion=${tokenInvitacion}` : "/register"} className="font-medium text-brand-700 underline underline-offset-2">
               Registrate
             </Link>
           </p>

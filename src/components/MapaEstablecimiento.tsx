@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, Polygon, Popup, TileLayer, useMap } from "react-leaflet";
 import { ATRIBUCION_OSM, CLASES_CONTENEDOR_MAPA, URL_TILES_OSM, cargarGeoman, colorPorRiesgo } from "@/lib/mapa-utils";
 import { nivelRiesgo } from "@/lib/explicar-riesgo";
+import { Icono } from "@/components/Icono";
+import type { VistaPreviaLote } from "@/components/CargaPorCoordenadas";
 import type { Activo, Coordenada, Lote, TipoActivo } from "@/lib/types";
 
 const ETIQUETA_TIPO_ACTIVO: Record<TipoActivo, string> = {
@@ -37,6 +39,23 @@ function iconoActivo(tipo: TipoActivo): L.DivIcon {
   });
 }
 
+/**
+ * Sin lotes todavia, abre sobre el partido del establecimiento (centroide oficial, ver
+ * /catalogo/centroide) en vez de un punto fijo de la cuenca: el primer lote se dibuja ahi.
+ */
+function CentrarEnPartido({ centro, hayLotes }: { centro?: Coordenada | null; hayLotes: boolean }) {
+  const map = useMap();
+  const centrado = useRef(false);
+
+  useEffect(() => {
+    if (centrado.current || hayLotes || !centro) return;
+    map.setView([centro.lat, centro.lon], 11);
+    centrado.current = true;
+  }, [centro, hayLotes, map]);
+
+  return null;
+}
+
 /** Encuadra el mapa a los lotes existentes en vez de quedarse en el centro generico de la cuenca. */
 function AutoEncuadre({ lotes }: { lotes: Lote[] }) {
   const map = useMap();
@@ -54,7 +73,80 @@ function AutoEncuadre({ lotes }: { lotes: Lote[] }) {
   return null;
 }
 
-type ModoEdicion = "ninguno" | "lote";
+/**
+ * Leaflet calcula el tamaño del mapa una sola vez: cuando el panel de coordenadas aparece al
+ * costado y el mapa se angosta, sin esto quedan franjas grises y los clicks caen corridos.
+ */
+function AjustarAlTamano() {
+  const map = useMap();
+  useEffect(() => {
+    const observador = new ResizeObserver(() => map.invalidateSize());
+    observador.observe(map.getContainer());
+    return () => observador.disconnect();
+  }, [map]);
+  return null;
+}
+
+function iconoVertice(numero: number, resaltado: boolean): L.DivIcon {
+  const fondo = resaltado ? "#8a4a22" : "#c2703d";
+  const tamano = resaltado ? 26 : 22;
+  return L.divIcon({
+    className: "",
+    html: `<span style="display:flex;align-items:center;justify-content:center;width:${tamano}px;height:${tamano}px;border-radius:9999px;background:${fondo};color:white;font:600 11px ui-monospace,monospace;border:2px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.45)">${numero}</span>`,
+    iconSize: [tamano, tamano],
+    iconAnchor: [tamano / 2, tamano / 2],
+  });
+}
+
+/**
+ * Lo que se va cargando por coordenadas: cada vertice con el numero de su renglon, y el poligono
+ * cuando hay tres. Si el poligono tiene un error (lados cruzados, un digito que lo estira 40 km)
+ * se dibuja gris: el problema se ve en el mapa, no solo en el texto.
+ */
+function VistaPreviaCoordenadas({ vista }: { vista: VistaPreviaLote }) {
+  const map = useMap();
+  const puntos = vista.vertices.filter((v): v is Coordenada => v !== null);
+  const firma = puntos.map((p) => `${p.lat.toFixed(5)},${p.lon.toFixed(5)}`).join(";");
+
+  // Se encuadra un rato despues de que se deja de escribir, para que el mapa no salte con cada digito.
+  useEffect(() => {
+    if (!firma) return;
+    const espera = setTimeout(() => {
+      const limites = firma.split(";").map((p) => p.split(",").map(Number) as [number, number]);
+      if (limites.length === 1) map.setView(limites[0], Math.max(map.getZoom(), 14));
+      else map.fitBounds(limites, { padding: [48, 48], maxZoom: 16 });
+    }, 600);
+    return () => clearTimeout(espera);
+  }, [firma, map]);
+
+  return (
+    <>
+      {vista.anillo && (
+        <Polygon
+          positions={vista.anillo.map((c) => [c.lat, c.lon])}
+          pathOptions={
+            vista.valido
+              ? { color: "#c2703d", weight: 2, dashArray: "5 5", fillOpacity: 0.15 }
+              : { color: "#6b6b5a", weight: 2, dashArray: "2 6", fillOpacity: 0.05 }
+          }
+        />
+      )}
+      {vista.vertices.map((v, i) =>
+        v ? (
+          <Marker
+            key={i}
+            position={[v.lat, v.lon]}
+            icon={iconoVertice(i + 1, vista.resaltado === i)}
+            zIndexOffset={vista.resaltado === i ? 1000 : 0}
+            interactive={false}
+          />
+        ) : null,
+      )}
+    </>
+  );
+}
+
+type ModoEdicion = "ninguno" | "elegir" | "lote";
 
 interface Props {
   establecimientoId: string;
@@ -62,11 +154,17 @@ interface Props {
   activos: Activo[];
   scorePorLote?: Record<string, number>;
   onLoteDibujado: (anillo: Coordenada[]) => void;
+  /** Segunda opcion de "+ Lote": abre la carga por coordenadas (vive fuera del mapa). */
+  onCargarPorCoordenadas?: () => void;
+  /** Vertices que se estan cargando por coordenadas. Mientras haya, el editor de dibujo se oculta. */
+  vistaPrevia?: VistaPreviaLote | null;
   /** Se dispara al soltar el pin de un activo MOVIBLE. Sin esto los pines quedan fijos. */
   onActivoMovido?: (activo: Activo, coordenada: Coordenada) => void;
   /** true en la pantalla de Lotes: se ve el conjunto pero no se dibuja nada nuevo desde ahi. */
   soloLectura?: boolean;
   alto?: string;
+  /** Centroide del partido del establecimiento: donde abrir el mapa si todavia no hay lotes. */
+  centroPartido?: Coordenada | null;
 }
 
 /**
@@ -76,10 +174,17 @@ interface Props {
  * Solo lotes: los cultivos y los activos se cargan dentro de cada lote, en su propia pantalla,
  * para que la relacion con el lote la defina la accion del usuario y no la posicion del click.
  */
-function EditorDibujo({ onLoteDibujado }: Pick<Props, "onLoteDibujado">) {
+function EditorDibujo({ onLoteDibujado, onCargarPorCoordenadas }: Pick<Props, "onLoteDibujado" | "onCargarPorCoordenadas">) {
   const map = useMap();
   const [modo, setModo] = useState<ModoEdicion>("ninguno");
   const capaEnEdicion = useRef<L.Layer | null>(null);
+
+  useEffect(() => {
+    if (modo !== "elegir") return;
+    const alTeclear = (e: KeyboardEvent) => e.key === "Escape" && setModo("ninguno");
+    window.addEventListener("keydown", alTeclear);
+    return () => window.removeEventListener("keydown", alTeclear);
+  }, [modo]);
 
   useEffect(() => {
     map.pm.setGlobalOptions({
@@ -124,17 +229,40 @@ function EditorDibujo({ onLoteDibujado }: Pick<Props, "onLoteDibujado">) {
 
   return (
     <div className="absolute right-3 top-3 z-[1000] flex flex-col items-end gap-2">
-      {modo === "ninguno" && (
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
+      {(modo === "ninguno" || modo === "elegir") && (
+        <button
+          onClick={() => setModo(modo === "elegir" ? "ninguno" : "elegir")}
+          aria-expanded={modo === "elegir"}
+          aria-haspopup="menu"
+          className="inline-flex items-center gap-1 rounded-full bg-brand-700 px-3.5 py-1.5 text-xs font-medium text-paper-50 shadow-sm hover:bg-brand-600"
+        >
+          <Icono nombre={modo === "elegir" ? "cerrar" : "mas"} className="h-3.5 w-3.5" />
+          Lote
+        </button>
+      )}
+
+      {modo === "elegir" && (
+        <div role="menu" aria-label="Cómo cargar el lote" className="w-72 overflow-hidden rounded-xl border border-paper-300 bg-paper-50 shadow-lg">
+          <OpcionAlta
+            icono="dibujar"
+            titulo="Dibujar en el mapa"
+            detalle="Marcá cada esquina con un clic y ajustá los vértices arrastrándolos."
+            onElegir={() => {
               map.pm.enableDraw("Polygon");
               setModo("lote");
             }}
-            className="rounded-full bg-brand-700 px-3.5 py-1.5 text-xs font-medium text-paper-50 shadow-sm hover:bg-brand-600"
-          >
-            + Lote
-          </button>
+          />
+          {onCargarPorCoordenadas && (
+            <OpcionAlta
+              icono="coordenadas"
+              titulo="Ingresar coordenadas"
+              detalle="Si tenés los vértices de un plano de mensura, un GPS o Google Earth."
+              onElegir={() => {
+                setModo("ninguno");
+                onCargarPorCoordenadas();
+              }}
+            />
+          )}
         </div>
       )}
 
@@ -158,6 +286,20 @@ function EditorDibujo({ onLoteDibujado }: Pick<Props, "onLoteDibujado">) {
   );
 }
 
+function OpcionAlta({ icono, titulo, detalle, onElegir }: { icono: "dibujar" | "coordenadas"; titulo: string; detalle: string; onElegir: () => void }) {
+  return (
+    <button role="menuitem" onClick={onElegir} className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-brand-100 [&+&]:border-t [&+&]:border-paper-200">
+      <span className="mt-0.5 text-brand-700">
+        <Icono nombre={icono} className="h-5 w-5" />
+      </span>
+      <span>
+        <span className="block text-sm font-medium text-ink-950">{titulo}</span>
+        <span className="mt-0.5 block text-xs leading-snug text-ink-600">{detalle}</span>
+      </span>
+    </button>
+  );
+}
+
 /**
  * Basemap OpenStreetMap estandar (gratuito, sin API key) con un filtro CSS que lo despatura y
  * le da temperatura calida acorde a la paleta, para que el color de riesgo sea lo unico que
@@ -169,9 +311,12 @@ export function MapaEstablecimiento({
   activos,
   scorePorLote,
   onLoteDibujado,
+  onCargarPorCoordenadas,
+  vistaPrevia,
   onActivoMovido,
   soloLectura = false,
   alto = "h-[55vh]",
+  centroPartido,
 }: Props) {
   const [geomanListo, setGeomanListo] = useState(false);
 
@@ -204,7 +349,12 @@ export function MapaEstablecimiento({
       >
         <TileLayer attribution={ATRIBUCION_OSM} url={URL_TILES_OSM} />
         <AutoEncuadre lotes={lotes} />
-        {!soloLectura && <EditorDibujo onLoteDibujado={onLoteDibujado} />}
+        <CentrarEnPartido centro={centroPartido} hayLotes={lotes.length > 0} />
+        <AjustarAlTamano />
+        {!soloLectura && !vistaPrevia && (
+          <EditorDibujo onLoteDibujado={onLoteDibujado} onCargarPorCoordenadas={onCargarPorCoordenadas} />
+        )}
+        {vistaPrevia && <VistaPreviaCoordenadas vista={vistaPrevia} />}
 
         {lotes.map((lote) => (
           <Polygon

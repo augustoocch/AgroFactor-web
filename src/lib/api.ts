@@ -24,7 +24,11 @@ function manejarSesionVencida() {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem("elagua.token");
   window.localStorage.removeItem("elagua.sesion");
-  if (window.location.pathname !== "/login") {
+  // En las pantallas publicas (ingreso, registro, link de invitacion) basta con limpiar la sesion:
+  // mandar a /login perderia, por ejemplo, el token de la invitacion que se estaba abriendo.
+  const { pathname } = window.location;
+  const esPublica = pathname === "/login" || pathname === "/register" || pathname.startsWith("/invitaciones/");
+  if (!esPublica) {
     // Fuera de un componente no hay useRouter; una recarga dura tambien garantiza que no quede
     // estado de React (queries en cache, etc.) de la sesion vieja dando vueltas.
     // eslint-disable-next-line @next/next/no-location-assign-relative-destination

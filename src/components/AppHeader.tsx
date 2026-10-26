@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { BrandMark } from "@/components/BrandMark";
 
-const ETIQUETA_ROL: Record<string, string> = {
+const ETIQUETA_PERFIL: Record<string, string> = {
   PRODUCTOR: "Productor",
   ASESOR: "Asesor técnico",
   ADMINISTRADOR: "Administrador",
@@ -27,9 +27,14 @@ export function AppHeader() {
           </span>
         </Link>
         <div className="flex items-center gap-4">
+          {sesion.adminPlataforma && (
+            <Link href="/calibracion" className="text-sm text-ink-600 transition-colors hover:text-brand-700">
+              Calibración del motor
+            </Link>
+          )}
           <div className="text-right leading-tight">
             <p className="text-sm font-medium text-ink-950">{sesion.nombre}</p>
-            <p className="text-xs uppercase tracking-wide text-brand-600">{ETIQUETA_ROL[sesion.rol]}</p>
+            <p className="text-xs uppercase tracking-wide text-brand-600">{ETIQUETA_PERFIL[sesion.perfil] ?? ""}</p>
           </div>
           <button
             onClick={() => {

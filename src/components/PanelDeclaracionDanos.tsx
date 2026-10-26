@@ -53,7 +53,7 @@ export function PanelDeclaracionDanos({
         <section>
           <h2 className="font-display text-lg font-medium text-ink-950">Cultivos</h2>
           <p className="mt-0.5 text-sm text-ink-600">
-            Cuando el sistema registró agua sobre el lote, propone dos porcentajes. Tocá uno para copiarlo al campo.
+            Cuando el sistema registró agua sobre el lote, propone el porcentaje de producción perdida. Tocalo para copiarlo al campo.
           </p>
           <ul className="mt-4 divide-y divide-paper-200 rounded-xl border border-paper-300 bg-paper-50">
             {cultivos.map((c) => (
@@ -142,11 +142,11 @@ function FilaDano({
 }
 
 /**
- * Los dos porcentajes sugeridos, cada uno con su cuenta a la vista y un botón para copiarlo al
- * campo. Se muestran los DOS y no uno promediado porque miden cosas distintas: la merma de
- * rendimiento es lo que no vas a cosechar, y el daño es el costo de implantación que se tira donde
- * la planta no llega a cosecha. El botón solo escribe el número en el campo; guardar sigue siendo
- * un acto explícito del productor.
+ * El porcentaje sugerido de producción perdida, con su cuenta a la vista y un botón para copiarlo
+ * al campo. Es uno solo (criterio FAO): donde la planta no llega a cosecha se pierde el 100 %, y la
+ * implantación ya invertida está adentro de esa pérdida. Si el motor llegara a mandar un daño
+ * aparte (pasturas perennes), se muestra también. El botón solo escribe el número en el campo;
+ * guardar sigue siendo un acto explícito del productor.
  */
 function Sugerencia({
   sugerencia,
@@ -179,9 +179,11 @@ function Sugerencia({
         <p>
           <strong>Pérdida de producción, {sugerencia.perdidaProduccionPct}%.</strong> {sugerencia.formulaPerdida}
         </p>
-        <p>
-          <strong>Daño, {sugerencia.danoPct}%.</strong> {sugerencia.formulaDano}
-        </p>
+        {sugerencia.danoPct != null && (
+          <p>
+            <strong>Daño, {sugerencia.danoPct}%.</strong> {sugerencia.formulaDano}
+          </p>
+        )}
         <p className="text-clay-600">{sugerencia.advertencia}</p>
       </InfoModal>
     </div>

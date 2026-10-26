@@ -11,10 +11,15 @@ interface Props {
   establecimientoId: string;
   anillo: Coordenada[] | null;
   onCerrar: () => void;
+  /** Despues de guardar (ademas de cerrar). Cancelar no lo dispara: vuelve a donde estaba. */
+  onGuardado?: () => void;
 }
 
-/** Se abre automaticamente cuando EditorDibujo termina un poligono en el mapa (ver MapaEstablecimiento). */
-export function NuevoLoteForm({ establecimientoId, anillo, onCerrar }: Props) {
+/**
+ * Se abre cuando EditorDibujo termina un poligono en el mapa (ver MapaEstablecimiento) o cuando se
+ * confirman los vertices de CargaPorCoordenadas.
+ */
+export function NuevoLoteForm({ establecimientoId, anillo, onCerrar, onGuardado }: Props) {
   const queryClient = useQueryClient();
   const { notificar } = useToast();
   const [nombre, setNombre] = useState("");
@@ -35,6 +40,7 @@ export function NuevoLoteForm({ establecimientoId, anillo, onCerrar }: Props) {
       setTipoUso("PASTURA");
       setAntecedentes(0);
       notificar("exito", "Lote guardado");
+      onGuardado?.();
       onCerrar();
     },
     onError: (e) => {

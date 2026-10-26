@@ -11,13 +11,8 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { easeOutExpo } from "@/lib/motion";
 import { GRUPOS, rutaDe, seccionActiva, type Seccion } from "@/lib/navegacion";
+import { ETIQUETA_ACCESO } from "@/lib/permisos";
 import type { Alerta, Establecimiento, NivelAlerta } from "@/lib/types";
-
-const ETIQUETA_ROL: Record<string, string> = {
-  PRODUCTOR: "Productor",
-  ASESOR: "Asesor técnico",
-  ADMINISTRADOR: "Administrador",
-};
 
 const CLAVE_CONTRAIDO = "agrofactor.menu-contraido";
 
@@ -286,7 +281,8 @@ function ContenidoMenu({
             {!contraido && (
               <div className="min-w-0 flex-1 leading-tight">
                 <p className="truncate text-sm text-paper-50">{sesion.nombre}</p>
-                <p className="text-[11px] text-brand-200">{ETIQUETA_ROL[sesion.rol]}</p>
+                {/* El rol es por campo: el mismo usuario puede ser dueño de uno y asesor de otro. */}
+                {establecimiento && <p className="text-[11px] text-brand-200">{ETIQUETA_ACCESO[establecimiento.miAcceso]}</p>}
               </div>
             )}
             <button
