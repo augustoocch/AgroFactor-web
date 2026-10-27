@@ -70,6 +70,7 @@ function EditorDelLote({
   onActivoUbicado,
   onZonaSueloDibujada,
   onRechazo,
+  onDibujoCancelado,
   autoIniciar,
   autoDibujarSuelo,
 }: {
@@ -80,6 +81,7 @@ function EditorDelLote({
   onActivoUbicado: (coordenada: Coordenada) => void;
   onZonaSueloDibujada?: (anillo: Coordenada[]) => void;
   onRechazo: (motivo: string) => void;
+  onDibujoCancelado?: () => void;
   autoIniciar: boolean;
   autoDibujarSuelo?: boolean;
 }) {
@@ -93,6 +95,15 @@ function EditorDelLote({
   const autoIniciado = useRef(false);
   const sueloIniciado = useRef(false);
   const dibujando = modo !== "ninguno";
+
+  // Toda entrada al dibujo pasa por aca: si un boton fija `modo` sin `intencion`, el ref queda con
+  // el valor del dibujo anterior y un cultivo termina guardado como sector de suelo.
+  const empezarDibujo = (nuevo: "cultivo" | "activo" | "suelo") => {
+    if (nuevo !== "activo") intencion.current = nuevo;
+    setAvisoVertice(null);
+    map.pm.enableDraw(nuevo === "activo" ? "Marker" : "Polygon");
+    setModo(nuevo);
+  };
 
   useEffect(() => {
     map.pm.setGlobalOptions({
@@ -150,10 +161,9 @@ function EditorDelLote({
   useEffect(() => {
     if (autoIniciar && !autoIniciado.current) {
       autoIniciado.current = true;
-      intencion.current = "cultivo";
-      map.pm.enableDraw("Polygon");
-      setModo("cultivo");
+      empezarDibujo("cultivo");
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoIniciar, map]);
 
   // Se llega desde "Dibujar un sector" del panel de suelo: arranca a dibujar sin un click extra.
@@ -166,9 +176,8 @@ function EditorDelLote({
     }
     if (sueloIniciado.current) return;
     sueloIniciado.current = true;
-    intencion.current = "suelo";
-    map.pm.enableDraw("Polygon");
-    setModo("suelo");
+    empezarDibujo("suelo");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoDibujarSuelo, map]);
 
   const cancelar = () => {
@@ -177,7 +186,9 @@ function EditorDelLote({
       map.removeLayer(capaEnEdicion.current);
       capaEnEdicion.current = null;
     }
+    setAvisoVertice(null);
     setModo("ninguno");
+    onDibujoCancelado?.();
   };
 
   const confirmar = () => {
@@ -226,30 +237,20 @@ function EditorDelLote({
       {!dibujando && (
         <div className="flex gap-2">
           <button
-            onClick={() => {
-              map.pm.enableDraw("Polygon");
-              setModo("cultivo");
-            }}
+            onClick={() => empezarDibujo("cultivo")}
             className="rounded-full bg-brand-700 px-3.5 py-1.5 text-xs font-medium text-paper-50 shadow-sm hover:bg-brand-600"
           >
             + Zona de cultivo
           </button>
           <button
-            onClick={() => {
-              map.pm.enableDraw("Marker");
-              setModo("activo");
-            }}
+            onClick={() => empezarDibujo("activo")}
             className="rounded-full border border-clay-500 bg-paper-50 px-3.5 py-1.5 text-xs font-medium text-clay-600 shadow-sm hover:bg-clay-100"
           >
             + Activo
           </button>
           {onZonaSueloDibujada && (
             <button
-              onClick={() => {
-                intencion.current = "suelo";
-                map.pm.enableDraw("Polygon");
-                setModo("suelo");
-              }}
+              onClick={() => empezarDibujo("suelo")}
               style={{ borderColor: COLOR_ZONA_SUELO, color: COLOR_ZONA_SUELO }}
               className="rounded-full border bg-paper-50 px-3.5 py-1.5 text-xs font-medium shadow-sm hover:bg-paper-200"
             >
@@ -303,6 +304,8 @@ interface Props {
   autoDibujarSuelo?: boolean;
   /** Se dispara cuando el dibujo terminado viola una regla: sale del lote, se pisa, o se cruza. */
   onRechazo: (motivo: string) => void;
+  /** Se dispara al cancelar un dibujo en curso: el padre baja las banderas que lo abrieron. */
+  onDibujoCancelado?: () => void;
   /** Se dispara al soltar el marcador de un activo: ajusta su posicion exacta dentro del lote. */
   onActivoMovido: (activo: Activo, coordenada: Coordenada) => void;
   /** true si se llego con "+ Cultivo" desde la lista de lotes: arranca a dibujar sin un click extra. */
@@ -322,6 +325,7 @@ export function MapaLote({
   zonasSuelo = [],
   onZonaSueloDibujada,
   onRechazo,
+  onDibujoCancelado,
   autoDibujarSuelo = false,
   autoDibujar = false,
 }: Props) {
@@ -358,6 +362,7 @@ export function MapaLote({
           onActivoUbicado={onActivoUbicado}
           onZonaSueloDibujada={onZonaSueloDibujada}
           onRechazo={onRechazo}
+          onDibujoCancelado={onDibujoCancelado}
           autoIniciar={autoDibujar}
           autoDibujarSuelo={autoDibujarSuelo}
         />

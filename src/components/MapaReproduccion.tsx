@@ -110,7 +110,7 @@ export function MapaReproduccion({
             desmontarla con cada tilde: asi el interruptor siempre actua sobre la misma capa. */}
         {!esSimulacion && imagen?.disponible && (
           <ImageOverlay
-            key={imagen.fecha}
+            key={`img-${imagen.fecha}`}
             url={imagen.dataUrl}
             bounds={[
               [imagen.bounds.sur, imagen.bounds.oeste],
@@ -149,7 +149,7 @@ export function MapaReproduccion({
         {mostrarAgua && !esSimulacion && escena.agua && (
           <GeoJSON
             // La key cambia con la fecha: Leaflet no reemplaza los datos de una capa GeoJSON montada.
-            key={escena.fecha}
+            key={`agua-${escena.fecha}`}
             data={escena.agua}
             style={{ color: COLOR_AGUA, fillColor: COLOR_AGUA, weight: 0.8, opacity: 0.9, fillOpacity: mostrarImagen ? 0.55 : 0.7 }}
           />

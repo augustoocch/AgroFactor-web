@@ -119,6 +119,8 @@ export default function LoteMapaPage({ params }: PageProps<"/establecimientos/[i
         // El dibujo queda en pantalla y editable: el usuario corrige los vertices que se pasaron
         // en vez de volver a trazar todo desde cero.
         onRechazo={(motivo) => notificar("error-validacion", motivo)}
+        // Sin esto la bandera queda en true y "Dibujar un sector" deja de responder.
+        onDibujoCancelado={() => setDibujandoSuelo(false)}
       />
 
       <section className="mt-10">

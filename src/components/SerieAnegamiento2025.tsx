@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { COLOR_AGUA } from "@/components/MapaReproduccion";
 import type { EscenaReproduccion, Reproduccion2025 } from "@/lib/types";
 
@@ -22,15 +22,19 @@ function diaDelAnio(iso: string, anio: number): number {
   return (Date.UTC(...(iso.split("-").map(Number) as [number, number, number])) - Date.UTC(anio, 0, 1)) / 86_400_000;
 }
 
+// Callback ref y no useRef: el contenedor se desmonta al pasar a tabla y vuelve como un nodo nuevo.
+// Con un efecto de una sola vez el observer seguia mirando el nodo viejo (ancho 0 -> 320 fijo).
 function useAncho<T extends HTMLElement>() {
-  const ref = useRef<T>(null);
+  const [nodo, ref] = useState<T | null>(null);
   const [ancho, setAncho] = useState(720);
   useEffect(() => {
-    if (!ref.current) return;
-    const obs = new ResizeObserver(([e]) => setAncho(Math.max(320, e.contentRect.width)));
-    obs.observe(ref.current);
+    if (!nodo) return;
+    const obs = new ResizeObserver(([e]) => {
+      if (e.contentRect.width > 0) setAncho(Math.max(320, e.contentRect.width));
+    });
+    obs.observe(nodo);
     return () => obs.disconnect();
-  }, []);
+  }, [nodo]);
   return { ref, ancho };
 }
 
