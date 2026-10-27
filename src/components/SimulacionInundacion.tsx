@@ -5,6 +5,7 @@ import { Canvas } from "@react-three/fiber";
 import { useEffect, useMemo, useState } from "react";
 import { EscenaSimulacion, VISTAS, type ActivoMarcador } from "@/components/EscenaSimulacion";
 import { InfoModal } from "@/components/InfoModal";
+import { SimulacionPlana } from "@/components/SimulacionPlana";
 import { api, obtenerImagenUrl } from "@/lib/api";
 import type {
   Activo,
@@ -114,6 +115,8 @@ export interface ParametrosSimulacion {
 // Humedad a la que el perfil ya no admite mas agua. Es el mismo tope que usa el calculo, y sirve
 // para mostrar la humedad como "que tan lleno esta el suelo" en vez de en m3/m3.
 const HUMEDAD_SATURACION_M3M3 = 0.45;
+/** Cuanto dura cada hora simulada en la reproduccion. La vista plana interpola dentro de ese lapso. */
+const MS_POR_HORA = 420;
 
 const PUNTOS_CARDINALES = [
   { deg: 0, etiqueta: "N" },
@@ -224,6 +227,8 @@ export function SimulacionInundacion({
   const [indicePaso, setIndicePaso] = useState(0);
   const [reproduciendo, setReproduciendo] = useState(true);
   const [vista, setVista] = useState(VISTAS[0]);
+  // 3D: relieve y escurrimiento. 2D: la forma del lote vista desde arriba, con isobandas.
+  const [modoVista, setModoVista] = useState<"3d" | "2d">("3d");
   const [mostrarFlechas, setMostrarFlechas] = useState(true);
   const [mostrarLluvia, setMostrarLluvia] = useState(true);
   const [activoSeleccionadoId, setActivoSeleccionadoId] = useState<string | null>(null);
@@ -255,7 +260,7 @@ export function SimulacionInundacion({
     if (!reproduciendo || pasos.length === 0) return;
     const temporizador = setInterval(() => {
       setIndicePaso((i) => (i + 1) % pasos.length);
-    }, 420);
+    }, MS_POR_HORA);
     return () => clearInterval(temporizador);
   }, [reproduciendo, pasos.length]);
 
@@ -290,25 +295,43 @@ export function SimulacionInundacion({
         {/* --- Escena 3D --- */}
         <div className="space-y-2">
           <div className="relative h-[30rem] w-full overflow-hidden rounded-2xl border border-paper-300 bg-gradient-to-b from-[#dbe7f0] to-[#f0ece3]">
-            <Canvas camera={{ position: VISTAS[0].posicion, fov: 42 }} shadows>
-              <EscenaSimulacion
+            {modoVista === "2d" ? (
+              <SimulacionPlana
                 terreno={simulacion.terreno}
-                paso={paso}
-                vientoKmh={parametrosHidro.vientoKmh}
-                direccionVientoDeg={parametrosHidro.direccionVientoDeg}
-                vista={vista}
-                mostrarFlechas={mostrarFlechas}
-                mostrarLluvia={mostrarLluvia}
-                anchoLoteM={parametrosHidro.celdaM * Math.max(simulacion.terreno.columnas - 1, 1)}
+                pasos={pasos}
+                indicePaso={Math.min(indicePaso, pasos.length - 1)}
+                reproduciendo={reproduciendo}
+                msPorPaso={MS_POR_HORA}
+                mascaraLote={simulacion.mascaraLote}
                 lotes={lotes?.map((l) => ({ id: l.id, nombre: l.nombre, anillo: l.anillo }))}
                 loteSeleccionadoId={loteSeleccionadoId}
                 onSeleccionarLote={onSeleccionarLote}
-                exageracion={exageracion}
                 activos={activosEnEstaHora}
                 activoSeleccionadoId={activoSeleccionadoId}
                 onSeleccionarActivo={setActivoSeleccionadoId}
               />
-            </Canvas>
+            ) : (
+              <Canvas camera={{ position: VISTAS[0].posicion, fov: 42 }} shadows>
+                <EscenaSimulacion
+                  terreno={simulacion.terreno}
+                  paso={paso}
+                  vientoKmh={parametrosHidro.vientoKmh}
+                  direccionVientoDeg={parametrosHidro.direccionVientoDeg}
+                  vista={vista}
+                  mostrarFlechas={mostrarFlechas}
+                  mostrarLluvia={mostrarLluvia}
+                  anchoLoteM={parametrosHidro.celdaM * Math.max(simulacion.terreno.columnas - 1, 1)}
+                  mascaraLote={simulacion.mascaraLote}
+                  lotes={lotes?.map((l) => ({ id: l.id, nombre: l.nombre, anillo: l.anillo }))}
+                  loteSeleccionadoId={loteSeleccionadoId}
+                  onSeleccionarLote={onSeleccionarLote}
+                  exageracion={exageracion}
+                  activos={activosEnEstaHora}
+                  activoSeleccionadoId={activoSeleccionadoId}
+                  onSeleccionarActivo={setActivoSeleccionadoId}
+                />
+              </Canvas>
+            )}
 
             <div className="absolute left-3 top-3 rounded-xl bg-paper-50/90 px-3 py-2 shadow-sm backdrop-blur">
               <p className="font-mono text-xs text-ink-950">Hora {paso.hora} de {pasos.length}</p>
@@ -376,7 +399,7 @@ export function SimulacionInundacion({
               </div>
             )}
 
-            {mostrarFlechas && (
+            {modoVista === "3d" && mostrarFlechas && (
               <div className="absolute bottom-3 left-3 rounded-xl bg-paper-50/90 px-3 py-2 shadow-sm backdrop-blur">
                 <p className="text-[10px] font-medium uppercase tracking-wide text-ink-600">Escurrimiento</p>
                 <div className="mt-1 flex items-center gap-1.5">
@@ -389,8 +412,22 @@ export function SimulacionInundacion({
               </div>
             )}
 
-            <div className="absolute right-3 top-3 flex flex-col gap-1.5">
-              {VISTAS.map((v) => (
+            <div className="absolute right-3 top-3 flex flex-col items-end gap-1.5">
+              <div role="group" aria-label="Tipo de vista" className="flex rounded-full bg-paper-50/90 p-0.5 shadow-sm">
+                {(["3d", "2d"] as const).map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setModoVista(m)}
+                    aria-pressed={modoVista === m}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                      modoVista === m ? "bg-ink-800 text-paper-50" : "text-ink-700"
+                    }`}
+                  >
+                    {m === "3d" ? "3D" : "Plano"}
+                  </button>
+                ))}
+              </div>
+              {modoVista === "3d" && VISTAS.map((v) => (
                 <button
                   key={v.nombre}
                   onClick={() => setVista(v)}
@@ -407,8 +444,8 @@ export function SimulacionInundacion({
               <InfoModal titulo="Cómo leer esta escena" etiqueta="¿Qué estoy viendo?">
                 <ul className="list-disc space-y-2 pl-4">
                   <li>
-                    <strong>Línea punteada clara</strong>: el límite real del lote. El terreno de alrededor se simula
-                    igual, porque el agua que lo anega muchas veces baja de una loma vecina.
+                    <strong>Línea punteada clara</strong>: el límite real del lote. El terreno de alrededor (en gris)
+                    se simula igual, porque el agua que lo anega muchas veces baja de una loma vecina.
                   </li>
                   <li>
                     <strong>Degradé de la lámina de agua</strong>: celeste donde hay poca agua, azul oscuro donde se
@@ -424,14 +461,21 @@ export function SimulacionInundacion({
                     está bajo agua a esta hora. Tocá uno para ver su ficha.
                   </li>
                   <li>
+                    <strong>Vista Plano</strong>: el lote con su forma real visto desde arriba (norte arriba). Cada
+                    tono de azul es un rango de lámina de agua; entre una hora y la siguiente el dibujo se interpola
+                    para seguir hacia dónde avanza el agua.
+                  </li>
+                  <li>
                     <strong>Cielo y lluvia</strong>: se oscurecen y espesan con la intensidad real de la hora que se
                     está mostrando en la línea de tiempo, no con el total del evento.
                   </li>
                 </ul>
               </InfoModal>
-              <p className="rounded-full bg-paper-50/90 px-2.5 py-1 text-[10px] text-ink-600 shadow-sm backdrop-blur">
-                Arrastrá para girar · rueda para zoom
-              </p>
+              {modoVista === "3d" && (
+                <p className="rounded-full bg-paper-50/90 px-2.5 py-1 text-[10px] text-ink-600 shadow-sm backdrop-blur">
+                  Arrastrá para girar · rueda para zoom
+                </p>
+              )}
             </div>
           </div>
 

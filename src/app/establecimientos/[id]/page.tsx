@@ -80,7 +80,9 @@ export default function PanoramaPage({ params }: PageProps<"/establecimientos/[i
   });
   const { data: duracion } = useQuery({
     queryKey: ["duracion-anegamiento", id],
-    queryFn: () => api.get<DuracionAnegamiento | null>(`/establecimientos/${id}/anegamiento/duracion`),
+    // Sin anegamiento estimable la API responde 204 (cuerpo vacio): react-query no acepta undefined.
+    queryFn: async () =>
+      (await api.get<DuracionAnegamiento | undefined>(`/establecimientos/${id}/anegamiento/duracion`)) ?? null,
     retry: false,
   });
 

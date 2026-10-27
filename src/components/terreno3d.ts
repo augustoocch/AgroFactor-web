@@ -1,7 +1,57 @@
 import * as THREE from "three";
 
-/** Ancho del bloque de terreno en unidades de escena (el lote se normaliza siempre a esto). */
+/** Lado MAYOR del bloque de terreno en unidades de escena; el otro sale de la proporcion real. */
 export const ANCHO_ESCENA = 10;
+
+const METROS_POR_GRADO_LAT = 110_574;
+const METROS_POR_GRADO_LON_ECUADOR = 111_320;
+
+// Fuera del campo: terreno de contexto, que se simula pero no es del productor. Se apaga hacia un
+// gris para que la forma del lote se lea sin tener que buscar la linea punteada.
+const GRIS_CONTEXTO = new THREE.Color("#8d8a80");
+const MEZCLA_CONTEXTO = 0.6;
+
+/** Extension del bloque en la escena (x = este-oeste, z = norte-sur) y su escala en metros. */
+export interface Dimensiones {
+  ancho: number;
+  fondo: number;
+  metrosPorUnidad: number;
+}
+
+/**
+ * Proporcion real del dominio: un rectangulo de 2 x 1 km se dibuja 2 x 1, no estirado a un
+ * cuadrado. Sin bounds (terreno sintetico) el bloque es cuadrado y mide `anchoFallbackM`.
+ */
+export function dimensionesDe(
+  bounds: {
+    latMin: number;
+    latMax: number;
+    lonMin: number;
+    lonMax: number;
+  } | null,
+  anchoFallbackM: number,
+): Dimensiones {
+  if (!bounds)
+    return {
+      ancho: ANCHO_ESCENA,
+      fondo: ANCHO_ESCENA,
+      metrosPorUnidad: Math.max(anchoFallbackM, 1) / ANCHO_ESCENA,
+    };
+  const latMedia = ((bounds.latMin + bounds.latMax) / 2) * (Math.PI / 180);
+  const metrosEO = Math.max((bounds.lonMax - bounds.lonMin) * METROS_POR_GRADO_LON_ECUADOR * Math.cos(latMedia), 1);
+  const metrosNS = Math.max((bounds.latMax - bounds.latMin) * METROS_POR_GRADO_LAT, 1);
+  const metrosPorUnidad = Math.max(metrosEO, metrosNS) / ANCHO_ESCENA;
+  return {
+    ancho: metrosEO / metrosPorUnidad,
+    fondo: metrosNS / metrosPorUnidad,
+    metrosPorUnidad,
+  };
+}
+
+/** El color de una celda fuera del campo: el mismo, apagado. */
+export function apagarContexto(color: THREE.Color): THREE.Color {
+  return color.lerp(GRIS_CONTEXTO, MEZCLA_CONTEXTO);
+}
 /** Altura del bloque de tierra por debajo de la superficie. */
 export const ESPESOR_BLOQUE = 2.2;
 
@@ -39,7 +89,8 @@ function aleatorio(semilla: number): number {
 
 /** Moteado de dos escalas (manchones + grano fino) mas sombra hacia la base, para que el corte de tierra no se vea plano. */
 function jaspeado(color: THREE.Color, x: number, y: number, z: number, profundidadRelativa: number): THREE.Color {
-  const manchon = aleatorio(Math.floor(x * 3) * 12.9898 + Math.floor(y * 3) * 78.233 + Math.floor(z * 3) * 37.719) * 0.26 - 0.13;
+  const manchon =
+    aleatorio(Math.floor(x * 3) * 12.9898 + Math.floor(y * 3) * 78.233 + Math.floor(z * 3) * 37.719) * 0.26 - 0.13;
   const grano = aleatorio(x * 91.7 + y * 47.3 + z * 63.1) * 0.14 - 0.07;
   const ruido = manchon + grano;
   const sombra = 1 - profundidadRelativa * 0.22;
@@ -50,12 +101,14 @@ function jaspeado(color: THREE.Color, x: number, y: number, z: number, profundid
   );
 }
 
-export function posicionX(columna: number, columnas: number): number {
-  return (columna / Math.max(columnas - 1, 1) - 0.5) * ANCHO_ESCENA;
+export function posicionX(columna: number, columnas: number, ancho: number = ANCHO_ESCENA): number {
+  return (columna / Math.max(columnas - 1, 1) - 0.5) * ancho;
 }
 
-export function posicionZ(fila: number, filas: number): number {
-  return (fila / Math.max(filas - 1, 1) - 0.5) * ANCHO_ESCENA;
+/** La fila 0 es la latitud minima (convencion del motor): queda en z negativo. La escena se espeja
+ * en z al dibujarse (ver EscenaSimulacion) para que el norte quede lejos de la camara. */
+export function posicionZ(fila: number, filas: number, fondo: number = ANCHO_ESCENA): number {
+  return (fila / Math.max(filas - 1, 1) - 0.5) * fondo;
 }
 
 /** Construye el lote como un bloque de tierra solido (superficie + cuatro paredes + fondo), no una lamina. */
@@ -63,9 +116,11 @@ export function construirTerreno(
   grid: number[][],
   elevacionMinM: number,
   elevacionMaxM: number,
-  metrosPorUnidad: number,
+  dimensiones: Dimensiones,
   exageracion: number,
+  mascaraLote: boolean[][] | null = null,
 ): GeometriaTerreno {
+  const { ancho, fondo, metrosPorUnidad } = dimensiones;
   const filas = grid.length;
   const columnas = grid[0].length;
   const rango = Math.max(elevacionMaxM - elevacionMinM, 0.01);
@@ -83,8 +138,9 @@ export function construirTerreno(
   for (let fila = 0; fila < filas; fila++) {
     for (let columna = 0; columna < columnas; columna++) {
       const altura = alturaDe(fila, columna);
-      posiciones.push(posicionX(columna, columnas), altura, posicionZ(fila, filas));
+      posiciones.push(posicionX(columna, columnas, ancho), altura, posicionZ(fila, filas, fondo));
       const color = colorPorAltura((grid[fila][columna] - elevacionMinM) / rango);
+      if (mascaraLote && !mascaraLote[fila]?.[columna]) apagarContexto(color);
       colores.push(color.r, color.g, color.b);
     }
   }
@@ -153,11 +209,11 @@ export function construirTerreno(
   };
 
   for (let columna = 0; columna < columnas - 1; columna++) {
-    // borde norte (fila 0) y sur (ultima fila)
-    const xa = posicionX(columna, columnas);
-    const xb = posicionX(columna + 1, columnas);
-    const zNorte = posicionZ(0, filas);
-    const zSur = posicionZ(filas - 1, filas);
+    // borde sur (fila 0, latitud minima) y norte (ultima fila)
+    const xa = posicionX(columna, columnas, ancho);
+    const xb = posicionX(columna + 1, columnas, ancho);
+    const zNorte = posicionZ(0, filas, fondo);
+    const zSur = posicionZ(filas - 1, filas, fondo);
     agregarQuad(
       [xb, alturaDe(0, columna + 1), zNorte],
       [xa, alturaDe(0, columna), zNorte],
@@ -173,10 +229,10 @@ export function construirTerreno(
   }
 
   for (let fila = 0; fila < filas - 1; fila++) {
-    const za = posicionZ(fila, filas);
-    const zb = posicionZ(fila + 1, filas);
-    const xOeste = posicionX(0, columnas);
-    const xEste = posicionX(columnas - 1, columnas);
+    const za = posicionZ(fila, filas, fondo);
+    const zb = posicionZ(fila + 1, filas, fondo);
+    const xOeste = posicionX(0, columnas, ancho);
+    const xEste = posicionX(columnas - 1, columnas, ancho);
     agregarQuad(
       [xOeste, alturaDe(fila, 0), za],
       [xOeste, alturaDe(fila + 1, 0), zb],
@@ -191,10 +247,10 @@ export function construirTerreno(
     );
   }
 
-  const x0 = posicionX(0, columnas);
-  const x1 = posicionX(columnas - 1, columnas);
-  const z0 = posicionZ(0, filas);
-  const z1 = posicionZ(filas - 1, filas);
+  const x0 = posicionX(0, columnas, ancho);
+  const x1 = posicionX(columnas - 1, columnas, ancho);
+  const z0 = posicionZ(0, filas, fondo);
+  const z1 = posicionZ(filas - 1, filas, fondo);
   agregarQuad([x0, yBase, z0], [x0, yBase, z1], [x1, yBase, z1], [x1, yBase, z0]);
 
   const bloque = new THREE.BufferGeometry();

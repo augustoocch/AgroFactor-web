@@ -4,7 +4,15 @@ import { useFrame, useThree, ThreeEvent } from "@react-three/fiber";
 import { OrbitControls, Html } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { ANCHO_ESCENA, construirTerreno, posicionX, posicionZ } from "@/components/terreno3d";
+import {
+  ANCHO_ESCENA,
+  apagarContexto,
+  construirTerreno,
+  dimensionesDe,
+  posicionX,
+  posicionZ,
+  type Dimensiones,
+} from "@/components/terreno3d";
 import type { Coordenada, Movilidad, PasoSimulacion, Terreno, TerrenoBounds, TipoActivo } from "@/lib/types";
 
 const MAX_GOTAS = 900;
@@ -222,16 +230,22 @@ function FlechasEscurrimiento({
   alturaDe,
   laminaGrid,
   escala,
+  dimensiones,
 }: {
   flujo: number[][][];
   alturaDe: (fila: number, columna: number) => number;
   laminaGrid: number[][];
   escala: number;
+  dimensiones: Dimensiones;
 }) {
   const malla = useRef<THREE.InstancedMesh>(null);
   const filas = flujo.length;
   const columnas = flujo[0]?.length ?? 0;
   const total = filas * columnas;
+  // Tamano de celda en la escena por eje: con un dominio rectangular no es el mismo, y el angulo de
+  // la flecha tiene que salir del vector en la escena, no del vector en celdas.
+  const celdaX = dimensiones.ancho / Math.max(columnas - 1, 1);
+  const celdaZ = dimensiones.fondo / Math.max(filas - 1, 1);
 
   const geometria = useMemo(() => {
     const punta = new THREE.ConeGeometry(0.055, 0.16, 6);
@@ -253,17 +267,27 @@ function FlechasEscurrimiento({
     for (const fila of flujo) for (const [dc, df] of fila) magnitudes.push(Math.hypot(dc, df));
     const maxima = Math.max(...magnitudes, 0.001);
 
-    const items: { fila: number; columna: number; angulo: number; intensidad: number }[] = [];
+    const items: {
+      fila: number;
+      columna: number;
+      angulo: number;
+      intensidad: number;
+    }[] = [];
     for (let fila = 0; fila < filas; fila += salto) {
       for (let columna = 0; columna < columnas; columna += salto) {
         const [dc, df] = flujo[fila][columna];
         const magnitud = Math.hypot(dc, df);
         if (magnitud / maxima < 0.15 || laminaGrid[fila][columna] < LAMINA_VISIBLE_MM) continue;
-        items.push({ fila, columna, angulo: Math.atan2(dc, df), intensidad: magnitud / maxima });
+        items.push({
+          fila,
+          columna,
+          angulo: Math.atan2(dc * celdaX, df * celdaZ),
+          intensidad: magnitud / maxima,
+        });
       }
     }
     return items;
-  }, [flujo, laminaGrid, filas, columnas, salto]);
+  }, [flujo, laminaGrid, filas, columnas, salto, celdaX, celdaZ]);
 
   useEffect(() => {
     if (!malla.current) return;
@@ -281,13 +305,13 @@ function FlechasEscurrimiento({
 
     corrientes.forEach((corriente, i) => {
       const { fila, columna, angulo, intensidad } = corriente;
-      const avance = ((t * (0.25 + intensidad * 0.5)) % 1) * (ANCHO_ESCENA / Math.max(columnas - 1, 1)) * salto;
+      const avance = ((t * (0.25 + intensidad * 0.5)) % 1) * Math.min(celdaX, celdaZ) * salto;
       const base = alturaDe(fila, columna) + laminaGrid[fila][columna] * escala + 0.05;
 
       auxiliar.position.set(
-        posicionX(columna, columnas) + Math.sin(angulo) * avance,
+        posicionX(columna, columnas, dimensiones.ancho) + Math.sin(angulo) * avance,
         base,
-        posicionZ(fila, filas) + Math.cos(angulo) * avance,
+        posicionZ(fila, filas, dimensiones.fondo) + Math.cos(angulo) * avance,
       );
       auxiliar.rotation.set(0, angulo, 0);
       const tamano = 0.6 + intensidad * 0.7;
@@ -312,10 +336,14 @@ function Agua({
   laminaGrid,
   alturaDe,
   escala,
+  dimensiones,
+  mascaraLote,
 }: {
   laminaGrid: number[][];
   alturaDe: (fila: number, columna: number) => number;
   escala: number;
+  dimensiones: Dimensiones;
+  mascaraLote: boolean[][] | null;
 }) {
   const malla = useRef<THREE.Mesh>(null);
   const geometria = useMemo(() => new THREE.BufferGeometry(), []);
@@ -340,14 +368,13 @@ function Agua({
         const lamina = laminaGrid[fila][columna];
         const idx = fila * columnas + columna;
         const y =
-          lamina >= LAMINA_VISIBLE_MM
-            ? alturaDe(fila, columna) + lamina * escala
-            : alturaDe(fila, columna) - 0.04;
+          lamina >= LAMINA_VISIBLE_MM ? alturaDe(fila, columna) + lamina * escala : alturaDe(fila, columna) - 0.04;
         base[idx] = y;
         fases[idx] = aleatorio(idx) * Math.PI * 2;
         mojado[idx] = lamina >= LAMINA_VISIBLE_MM ? 1 : 0;
-        posiciones.push(posicionX(columna, columnas), y, posicionZ(fila, filas));
+        posiciones.push(posicionX(columna, columnas, dimensiones.ancho), y, posicionZ(fila, filas, dimensiones.fondo));
         const color = COLOR_AGUA_BAJA.clone().lerp(COLOR_AGUA_ALTA, Math.min(lamina / laminaMaxima, 1));
+        if (mascaraLote && !mascaraLote[fila]?.[columna]) apagarContexto(color);
         colores.push(color.r, color.g, color.b);
       }
     }
@@ -366,7 +393,7 @@ function Agua({
     geometria.setAttribute("color", new THREE.Float32BufferAttribute(colores, 3));
     geometria.setIndex(indices);
     geometria.computeVertexNormals();
-  }, [laminaGrid, alturaDe, escala, geometria, filas, columnas]);
+  }, [laminaGrid, alturaDe, escala, geometria, filas, columnas, dimensiones, mascaraLote]);
 
   // Oleaje sutil para que el agua no se vea como un plano pintado.
   useFrame((estado) => {
@@ -490,6 +517,7 @@ function MarcadoresActivos({
   alturaDe,
   filas,
   columnas,
+  dimensiones,
   seleccionadoId,
   onSeleccionar,
 }: {
@@ -497,6 +525,7 @@ function MarcadoresActivos({
   alturaDe: (fila: number, columna: number) => number;
   filas: number;
   columnas: number;
+  dimensiones: Dimensiones;
   seleccionadoId: string | null;
   onSeleccionar: (id: string | null) => void;
 }) {
@@ -504,8 +533,8 @@ function MarcadoresActivos({
     <>
       {activos.map((activo) => {
         const y = alturaInterpolada(alturaDe, activo.fFila, activo.fColumna, filas, columnas);
-        const x = posicionX(activo.fColumna, columnas);
-        const z = posicionZ(activo.fFila, filas);
+        const x = posicionX(activo.fColumna, columnas, dimensiones.ancho);
+        const z = posicionZ(activo.fFila, filas, dimensiones.fondo);
         const seleccionado = seleccionadoId === activo.id;
 
         return (
@@ -577,12 +606,17 @@ function alturaContinua(
 }
 
 /** Coordenada geografica proyectada a (x, z) de la escena, mas sus fracciones de fila/columna. */
-function proyectarCoordenada(coord: Coordenada, bounds: TerrenoBounds) {
+function proyectarCoordenada(coord: Coordenada, bounds: TerrenoBounds, dimensiones: Dimensiones) {
   const dLat = bounds.latMax - bounds.latMin || 1;
   const dLon = bounds.lonMax - bounds.lonMin || 1;
   const fLat = (coord.lat - bounds.latMin) / dLat;
   const fLon = (coord.lon - bounds.lonMin) / dLon;
-  return { x: (fLon - 0.5) * ANCHO_ESCENA, z: (fLat - 0.5) * ANCHO_ESCENA, fLat, fLon };
+  return {
+    x: (fLon - 0.5) * dimensiones.ancho,
+    z: (fLat - 0.5) * dimensiones.fondo,
+    fLat,
+    fLon,
+  };
 }
 
 /** Un lote: contorno punteado + relleno tenue con su forma real, clickeable para seleccionarlo. */
@@ -591,7 +625,7 @@ function LoteInteractivo({
   bounds,
   grid,
   elevacionMinM,
-  metrosPorUnidad,
+  dimensiones,
   exageracion,
   seleccionado,
   onClick,
@@ -600,18 +634,18 @@ function LoteInteractivo({
   bounds: TerrenoBounds;
   grid: number[][];
   elevacionMinM: number;
-  metrosPorUnidad: number;
+  dimensiones: Dimensiones;
   exageracion: number;
   seleccionado: boolean;
   onClick: () => void;
 }) {
   const alturaEn = (fLat: number, fLon: number) =>
-    alturaContinua(grid, elevacionMinM, metrosPorUnidad, exageracion, fLat, fLon);
+    alturaContinua(grid, elevacionMinM, dimensiones.metrosPorUnidad, exageracion, fLat, fLon);
 
   const contorno = useMemo(() => {
     if (anillo.length < 2) return null;
     const puntos = anillo.map((c) => {
-      const { x, z, fLat, fLon } = proyectarCoordenada(c, bounds);
+      const { x, z, fLat, fLon } = proyectarCoordenada(c, bounds, dimensiones);
       return [x, alturaEn(fLat, fLon) + 0.05, z] as [number, number, number];
     });
     const cerrado = [...puntos, puntos[0]];
@@ -632,12 +666,12 @@ function LoteInteractivo({
     g.setAttribute("lineDistance", new THREE.Float32BufferAttribute(distancias, 1));
     return g;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- alturaEn ya depende solo de los deps listados
-  }, [anillo, bounds, grid, elevacionMinM, metrosPorUnidad, exageracion]);
+  }, [anillo, bounds, grid, elevacionMinM, dimensiones, exageracion]);
 
   const relleno = useMemo(() => {
     if (anillo.length < 3) return null;
     const puntos2D = anillo.map((c) => {
-      const { x, z } = proyectarCoordenada(c, bounds);
+      const { x, z } = proyectarCoordenada(c, bounds, dimensiones);
       return new THREE.Vector2(x, z);
     });
     let caras: number[][];
@@ -650,7 +684,7 @@ function LoteInteractivo({
 
     const posiciones: number[] = [];
     for (const c of anillo) {
-      const { x, z, fLat, fLon } = proyectarCoordenada(c, bounds);
+      const { x, z, fLat, fLon } = proyectarCoordenada(c, bounds, dimensiones);
       posiciones.push(x, alturaEn(fLat, fLon) + 0.03, z);
     }
     const g = new THREE.BufferGeometry();
@@ -659,7 +693,7 @@ function LoteInteractivo({
     g.computeVertexNormals();
     return g;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ver comentario en `contorno`
-  }, [anillo, bounds, grid, elevacionMinM, metrosPorUnidad, exageracion]);
+  }, [anillo, bounds, grid, elevacionMinM, dimensiones, exageracion]);
 
   return (
     <>
@@ -686,7 +720,7 @@ function LoteInteractivo({
           <meshBasicMaterial
             color={seleccionado ? "#ffb020" : "#fdf6e8"}
             transparent
-            opacity={seleccionado ? 0.16 : 0.05}
+            opacity={seleccionado ? 0.22 : 0.1}
             side={THREE.DoubleSide}
             depthWrite={false}
           />
@@ -704,8 +738,10 @@ interface Props {
   vista: VistaCamara;
   mostrarFlechas: boolean;
   mostrarLluvia: boolean;
-  /** Ancho real del dominio simulado en metros: fija la escala vertical verdadera del bloque. */
+  /** Ancho real del dominio simulado en metros: escala del bloque cuando el terreno no trae bounds. */
   anchoLoteM: number;
+  /** Celdas que son el campo (fila 0 = latitud minima). El resto se dibuja apagado. */
+  mascaraLote?: boolean[][] | null;
   exageracion: number;
   /** Lotes reales del alcance. Sin esto el bloque entero se leeria como un solo campo generico. */
   lotes?: { id: string; nombre: string; anillo: Coordenada[] }[];
@@ -725,6 +761,7 @@ export function EscenaSimulacion({
   mostrarFlechas,
   mostrarLluvia,
   anchoLoteM,
+  mascaraLote = null,
   exageracion,
   lotes,
   loteSeleccionadoId,
@@ -733,19 +770,21 @@ export function EscenaSimulacion({
   activoSeleccionadoId,
   onSeleccionarActivo,
 }: Props) {
-  const metrosPorUnidad = Math.max(anchoLoteM, 1) / ANCHO_ESCENA;
+  // Proporcion real del dominio: antes se estiraba a un cuadrado y un lote alargado se veia ancho.
+  const dimensiones = useMemo(() => dimensionesDe(terreno.bounds, anchoLoteM), [terreno.bounds, anchoLoteM]);
   const { superficie, bloque, alturaDe } = useMemo(
     () =>
       construirTerreno(
         terreno.grid,
         terreno.elevacionMinM,
         terreno.elevacionMaxM,
-        metrosPorUnidad,
+        dimensiones,
         exageracion,
+        mascaraLote,
       ),
-    [terreno, metrosPorUnidad, exageracion],
+    [terreno, dimensiones, exageracion, mascaraLote],
   );
-  const escala = escalaAgua(metrosPorUnidad, exageracion);
+  const escala = escalaAgua(dimensiones.metrosPorUnidad, exageracion);
 
   const intensidad = Math.min(paso.lluviaMmH / 25, 1);
   const colorCielo = useMemo(() => CIELO_CALMO.clone().lerp(CIELO_TORMENTA, intensidad), [intensidad]);
@@ -773,60 +812,73 @@ export function EscenaSimulacion({
       <directionalLight position={[9, 3, 0]} intensity={0.4} />
       <directionalLight position={[-9, 3, 0]} intensity={0.4} />
 
-      <mesh geometry={superficie} receiveShadow>
-        <meshStandardMaterial vertexColors roughness={Math.max(0.92 - intensidad * 0.25, 0.55)} />
-      </mesh>
-      <mesh geometry={bloque}>
-        <meshStandardMaterial vertexColors roughness={0.95} />
-      </mesh>
-      <Agua laminaGrid={paso.laminaGrid} alturaDe={alturaDe} escala={escala} />
-
-      {lotes &&
-        terreno.bounds &&
-        lotes.map((lote) => (
-          <LoteInteractivo
-            key={lote.id}
-            anillo={lote.anillo}
-            bounds={terreno.bounds!}
-            grid={terreno.grid}
-            elevacionMinM={terreno.elevacionMinM}
-            metrosPorUnidad={metrosPorUnidad}
-            exageracion={exageracion}
-            seleccionado={loteSeleccionadoId === lote.id}
-            onClick={() => onSeleccionarLote?.(loteSeleccionadoId === lote.id ? null : lote.id)}
-          />
-        ))}
-
-      {activos && activos.length > 0 && (
-        <MarcadoresActivos
-          activos={activos}
-          alturaDe={alturaDe}
-          filas={filas}
-          columnas={columnas}
-          seleccionadoId={activoSeleccionadoId ?? null}
-          onSeleccionar={(id) => onSeleccionarActivo?.(id)}
-        />
-      )}
-
-      {mostrarFlechas && (
-        <FlechasEscurrimiento
-          flujo={paso.flujoGrid}
+      {/* Espejo en z: la fila 0 de la grilla es el SUR y la camara mira desde +z, asi que sin esto
+          el norte quedaba abajo y el lote se veia invertido respecto del mapa. three.js corrige el
+          sentido de las caras de un objeto con escala negativa, asi que la geometria no cambia. */}
+      <group scale={[1, 1, -1]}>
+        <mesh geometry={superficie} receiveShadow>
+          <meshStandardMaterial vertexColors roughness={Math.max(0.92 - intensidad * 0.25, 0.55)} />
+        </mesh>
+        <mesh geometry={bloque}>
+          <meshStandardMaterial vertexColors roughness={0.95} />
+        </mesh>
+        <Agua
           laminaGrid={paso.laminaGrid}
           alturaDe={alturaDe}
           escala={escala}
+          dimensiones={dimensiones}
+          mascaraLote={mascaraLote}
         />
-      )}
 
-      {mostrarLluvia && (
-        <>
-          <Lluvia intensidadMmH={paso.lluviaMmH} vientoKmh={vientoKmh} direccionVientoDeg={direccionVientoDeg} />
-          <CielosDeTormenta
-            intensidadMmH={paso.lluviaMmH}
-            vientoKmh={vientoKmh}
-            direccionVientoDeg={direccionVientoDeg}
+        {lotes &&
+          terreno.bounds &&
+          lotes.map((lote) => (
+            <LoteInteractivo
+              key={lote.id}
+              anillo={lote.anillo}
+              bounds={terreno.bounds!}
+              grid={terreno.grid}
+              elevacionMinM={terreno.elevacionMinM}
+              dimensiones={dimensiones}
+              exageracion={exageracion}
+              seleccionado={loteSeleccionadoId === lote.id}
+              onClick={() => onSeleccionarLote?.(loteSeleccionadoId === lote.id ? null : lote.id)}
+            />
+          ))}
+
+        {activos && activos.length > 0 && (
+          <MarcadoresActivos
+            activos={activos}
+            alturaDe={alturaDe}
+            filas={filas}
+            columnas={columnas}
+            dimensiones={dimensiones}
+            seleccionadoId={activoSeleccionadoId ?? null}
+            onSeleccionar={(id) => onSeleccionarActivo?.(id)}
           />
-        </>
-      )}
+        )}
+
+        {mostrarFlechas && (
+          <FlechasEscurrimiento
+            flujo={paso.flujoGrid}
+            laminaGrid={paso.laminaGrid}
+            alturaDe={alturaDe}
+            escala={escala}
+            dimensiones={dimensiones}
+          />
+        )}
+
+        {mostrarLluvia && (
+          <>
+            <Lluvia intensidadMmH={paso.lluviaMmH} vientoKmh={vientoKmh} direccionVientoDeg={direccionVientoDeg} />
+            <CielosDeTormenta
+              intensidadMmH={paso.lluviaMmH}
+              vientoKmh={vientoKmh}
+              direccionVientoDeg={direccionVientoDeg}
+            />
+          </>
+        )}
+      </group>
 
       <CamaraControlada vista={vista} />
       <OrbitControls enablePan maxPolarAngle={Math.PI / 2.05} minDistance={5} maxDistance={30} />
