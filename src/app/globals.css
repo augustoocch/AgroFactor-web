@@ -187,3 +187,35 @@ h1, h2, h3, .font-display {
     animation: none !important;
   }
 }
+
+/* Gotas del corte de perfil en la landing (Recorrido.tsx). Su opacidad la maneja el scroll. */
+@keyframes recorrido-gota {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(90px);
+    opacity: 0;
+  }
+}
+
+.recorrido-gota {
+  animation: recorrido-gota 0.9s linear infinite;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .recorrido-gota {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
